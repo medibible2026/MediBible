@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Bible, Filters, KIND_INFO, LINK_KINDS, LinkKind, Xrefs, XrefEntry, applyFilters, inCount, incoming, linkKind, osisOf, outCount,
   outgoing, refLabel,
@@ -23,12 +23,13 @@ interface Props {
   activeChainTitle: string | null;
   note: string;
   setNote: (text: string) => void;
+  openNoteSignal?: number; // changes when another part of the app asks to edit the note
 }
 
 const VOTE_STEPS = [-100, 0, 1, 5, 10, 25, 50];
 const PAGE = 40;
 
-export function XrefPanel({ bible, xrefs, selected, filters, setFilters, onGo, onAdd, onLemma, activeChainTitle, note, setNote }: Props) {
+export function XrefPanel({ bible, xrefs, selected, filters, setFilters, onGo, onAdd, onLemma, activeChainTitle, note, setNote, openNoteSignal = 0 }: Props) {
   const [limit, setLimit] = useState(PAGE);
   const [draft, setDraft] = useState(note);
   const [view, setViewState] = useState<View>(() => {
@@ -39,6 +40,16 @@ export function XrefPanel({ bible, xrefs, selected, filters, setFilters, onGo, o
     try { localStorage.setItem(VIEW_KEY, v); } catch { /* per-viewer convenience only */ }
   };
   const [expanded, setExpanded] = useState(false);
+  const [noteOpen, setNoteOpen] = useState(false);
+  const [filtersOpen, setFiltersOpen] = useState(false); // phones: filters fold away
+  const [fullText, setFullText] = useState(false); // phones: long verses are clamped
+  const noteRef = useRef<HTMLTextAreaElement>(null);
+  useEffect(() => { setNoteOpen(false); setFullText(false); }, [selected]);
+  useEffect(() => {
+    if (!openNoteSignal) return;
+    setNoteOpen(true);
+    requestAnimationFrame(() => noteRef.current?.focus());
+  }, [openNoteSignal]);
   useEffect(() => {
     if (!expanded) return;
     const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setExpanded(false); };
@@ -64,6 +75,7 @@ export function XrefPanel({ bible, xrefs, selected, filters, setFilters, onGo, o
     setFilters({ ...filters, kinds: LINK_KINDS.filter((x) => next.includes(x)).join('') });
   };
 
+  const activeFilters = (filters.scope !== 'all' ? 1 : 0) + (filters.book >= 0 ? 1 : 0) + (filters.minVotes !== 0 ? 1 : 0);
   const total = filters.direction === 'out' ? outCount(xrefs, selected) : inCount(xrefs, selected);
   const addLabel = activeChainTitle ? `Add to “${activeChainTitle}”` : 'Add to a new chain';
 
@@ -75,15 +87,23 @@ export function XrefPanel({ bible, xrefs, selected, filters, setFilters, onGo, o
           <h2>{refLabel(bible, selected)}</h2>
           <button className="btn small" onClick={() => onAdd(selected, 0)} title={addLabel}>+ Chain</button>
         </div>
-        <p className="focus-text"><Passage bible={bible} id={selected} /></p>
-        <textarea
-          className="note"
-          placeholder={`Your note on ${refLabel(bible, selected)}…`}
-          value={draft}
-          rows={draft ? 3 : 1}
-          onChange={(e) => setDraft(e.target.value)}
-          onBlur={() => draft !== note && setNote(draft)}
-        />
+        <p className={`focus-text${fullText ? '' : ' clamped'}`} onClick={() => setFullText(true)}><Passage bible={bible} id={selected} /></p>
+        {draft || noteOpen ? (
+          <textarea
+            ref={noteRef}
+            autoFocus={!draft} // opened empty by "+ Add a note" or the phone's Note action: ready to type
+            className="note"
+            placeholder={`Your note on ${refLabel(bible, selected)}…`}
+            value={draft}
+            rows={3}
+            onChange={(e) => setDraft(e.target.value)}
+            onBlur={() => { if (draft !== note) setNote(draft); if (!draft) setNoteOpen(false); }}
+          />
+        ) : (
+          <button className="btn ghost small add-note" onClick={() => { setNoteOpen(true); requestAnimationFrame(() => noteRef.current?.focus()); }}>
+            + Add a note
+          </button>
+        )}
       </div>
 
       <div className="filters" role="group" aria-label="Filters">
@@ -95,6 +115,10 @@ export function XrefPanel({ bible, xrefs, selected, filters, setFilters, onGo, o
             Referenced by <span className="count">{inCount(xrefs, selected)}</span>
           </button>
         </div>
+        <button className="btn ghost small filters-toggle" aria-expanded={filtersOpen} onClick={() => setFiltersOpen(!filtersOpen)}>
+          Filters{activeFilters ? ` (${activeFilters})` : ''} {filtersOpen ? '▴' : '▾'}
+        </button>
+        <div className={`filter-fields${filtersOpen ? ' open' : ''}`}>
         <label>
           Scope
           <select value={filters.scope} onChange={(e) => setFilters({ ...filters, scope: e.target.value as Filters['scope'] })}>
@@ -117,6 +141,7 @@ export function XrefPanel({ bible, xrefs, selected, filters, setFilters, onGo, o
             {VOTE_STEPS.map((v) => <option key={v} value={v}>{v <= -100 ? 'All' : `≥ ${v}`}</option>)}
           </select>
         </label>
+        </div>
       </div>
 
       <div className="list-wrap">

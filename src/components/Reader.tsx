@@ -69,9 +69,33 @@ export function Reader({ bible, xrefs, view, setView, selected, onSelect, noteKe
 
   useEffect(() => { setWord(null); }, [view.book, view.chapter, mode]);
 
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const lastChapter = useRef('');
   useEffect(() => {
-    selRef.current?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+    // Keep the selected verse in view: centred on load or a new chapter, minimal movement within one.
+    // (Instant, so a later adjustment, e.g. when the phone's verse sheet opens, is not overridden.)
+    // A chapter without the selected verse starts at the top.
+    const key = `${view.book}.${view.chapter}`;
+    const sameChapter = lastChapter.current === key;
+    lastChapter.current = key;
+    if (selRef.current) selRef.current.scrollIntoView({ block: sameChapter ? 'nearest' : 'center' });
+    else scrollRef.current?.scrollTo({ top: 0 });
   }, [selected, view.book, view.chapter]);
+
+  // Swipe left/right on the text to change chapter (phones and tablets).
+  const touch = useRef<{ x: number; y: number; t: number } | null>(null);
+  const onTouchStart = (e: React.TouchEvent) => {
+    const p = e.touches[0];
+    touch.current = e.touches.length === 1 ? { x: p.clientX, y: p.clientY, t: Date.now() } : null;
+  };
+  const onTouchEnd = (e: React.TouchEvent) => {
+    const start = touch.current;
+    touch.current = null;
+    if (!start) return;
+    const p = e.changedTouches[0];
+    const dx = p.clientX - start.x, dy = p.clientY - start.y;
+    if (Date.now() - start.t < 700 && Math.abs(dx) > 70 && Math.abs(dy) < Math.abs(dx) * 0.5) step(dx < 0 ? 1 : -1);
+  };
 
   const step = (d: number) => {
     let b = view.book, c = view.chapter + d;
@@ -112,7 +136,8 @@ export function Reader({ bible, xrefs, view, setView, selected, onSelect, noteKe
 
   return (
     <section className="panel reader" aria-label="Bible reader">
-      <div className="panel-head">
+      <div className="panel-head reader-head">
+        <div className="head-row">
         <select aria-label="Book" value={view.book} onChange={(e) => setView({ book: Number(e.target.value), chapter: 1 })}>
           {bible.books.map((b, i) => (
             <option key={b.osis} value={i}>{b.name}</option>
@@ -123,6 +148,13 @@ export function Reader({ bible, xrefs, view, setView, selected, onSelect, noteKe
             <option key={i} value={i + 1}>{i + 1}</option>
           ))}
         </select>
+        <div className="spacer" />
+        <span className="nav-arrows">
+          <button className="btn ghost icon" aria-label="Previous chapter" onClick={() => step(-1)}>‹</button>
+          <button className="btn ghost icon" aria-label="Next chapter" onClick={() => step(1)}>›</button>
+        </span>
+        </div>
+        <div className="head-row head-modes">
         <div className="seg" role="tablist" aria-label="Reading mode">
           <button role="tab" aria-selected={mode === 'text'} onClick={() => setMode('text')}>Text</button>
           <button role="tab" aria-selected={mode === 'interlinear'} onClick={() => setMode('interlinear')}>Interlinear</button>
@@ -135,13 +167,9 @@ export function Reader({ bible, xrefs, view, setView, selected, onSelect, noteKe
             <option value="na">Greek: NA28</option>
           </select>
         )}
-        <div className="spacer" />
-        <span className="nav-arrows">
-          <button className="btn ghost icon" aria-label="Previous chapter" onClick={() => step(-1)}>‹</button>
-          <button className="btn ghost icon" aria-label="Next chapter" onClick={() => step(1)}>›</button>
-        </span>
+        </div>
       </div>
-      <div className="scroll">
+      <div className="scroll" ref={scrollRef} onTouchStart={onTouchStart} onTouchEnd={onTouchEnd}>
         <h3 className="chapter-title">{book.name} {view.chapter}</h3>
         {mode === 'interlinear' && !interReady && (
           interError ? <p className="warn">{interError}</p> : <p className="muted">Loading {isHebrew ? 'Hebrew' : 'Greek'} text for {book.name}…</p>

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
-  ALT_TRANSLATION, Bible, DEFAULT_FILTERS, Filters, Translation, Xrefs, fromOsis, hasTamil, lexEntry, loadConcordance, loadData, loadLexicon, loadLinks,
+  ALT_TRANSLATION, Bible, DEFAULT_FILTERS, Filters, Translation, Xrefs, fromOsis, hasTamil, lexEntry, loadConcordance, loadData, loadLexicon, loadLinks, outCount,
   loadTranslation, osisOf, parseRef, searchText, strongBase,
 } from './data';
 import { TextContext, TextMode } from './text';
@@ -8,6 +8,7 @@ import { useWorkbench } from './store';
 import { Reader, SearchState, View } from './components/Reader';
 import { XrefPanel } from './components/XrefPanel';
 import { Workbench } from './components/Workbench';
+import { BottomTabs, MobileTab, VerseSheet } from './components/Mobile';
 import { About } from './components/About';
 import { StatusBar } from './components/StatusBar';
 
@@ -33,7 +34,6 @@ export default function App() {
   return <Main bible={data.bible} xrefs={data.xrefs} />;
 }
 
-type MobileTab = 'read' | 'links' | 'study';
 const isNarrow = () => window.matchMedia('(max-width: 900px)').matches;
 
 function idFromHash(bible: Bible): number {
@@ -55,7 +55,10 @@ function Main({ bible, xrefs }: { bible: Bible; xrefs: Xrefs }) {
   const [filters, setFilters] = useState<Filters>(DEFAULT_FILTERS);
   const [query, setQuery] = useState('');
   const [search, setSearch] = useState<SearchState | null>(null);
-  const [tab, setTab] = useState<MobileTab>('read');
+  const [tab, setTabState] = useState<MobileTab>('read');
+  const [sheetOpen, setSheetOpen] = useState(false); // phone: actions for the tapped verse
+  const [noteSignal, setNoteSignal] = useState(0); // phone: open the note editor on the Cross-refs tab
+  const setTab = (t: MobileTab) => { setSheetOpen(false); setTabState(t); };
   const [aboutOpen, setAboutOpen] = useState<false | 'top' | 'offline'>(false);
   const [textMode, setTextModeState] = useState<TextMode>(() => {
     try { return (localStorage.getItem('medibible.textMode') as TextMode) || 'kjv'; } catch { return 'kjv'; }
@@ -158,31 +161,31 @@ function Main({ bible, xrefs }: { bible: Bible; xrefs: Xrefs }) {
       <header className="topbar">
         <h1 className="brand">Medi<span>Bible</span></h1>
         <form className="search" onSubmit={submit} role="search">
-          <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Reference (Isa 53:5), words (“lamb of God”) or தமிழ்" aria-label="Search" />
+          <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Isa 53:5, “lamb of God” or தமிழ்" aria-label="Search" />
           <button className="btn" type="submit">Go</button>
         </form>
-        <button className="btn ghost" onClick={back} disabled={!history.length} title="Back to previous verse">‹ Back</button>
-        <button className="btn ghost about-btn" onClick={() => setAboutOpen('top')} title="About, offline use, sources and licences">About</button>
+        <button className="btn ghost back-btn" onClick={back} disabled={!history.length} title="Back to previous verse" aria-label="Back to previous verse">‹<span className="btn-label"> Back</span></button>
+        <button className="btn ghost about-btn" onClick={() => setAboutOpen('top')} title="About, offline use, sources and licences" aria-label="About, offline use, sources and licences"><span className="btn-label">About</span><span className="btn-icon" aria-hidden="true">i</span></button>
       </header>
-
-      <nav className="mobile-tabs seg" role="tablist">
-        {(['read', 'links', 'study'] as MobileTab[]).map((t) => (
-          <button key={t} role="tab" aria-selected={tab === t} onClick={() => setTab(t)}>
-            {{ read: 'Read', links: 'Cross-refs', study: 'Study' }[t]}
-          </button>
-        ))}
-      </nav>
 
       <main className="columns">
         <div className="col col-read">
           <Reader bible={bible} xrefs={xrefs} view={view} setView={setView} selected={selected}
-            onSelect={(id) => go(id, { tab: 'links' })} noteKeys={noteKeys} search={search} onCloseSearch={() => setSearch(null)}
+            onSelect={(id) => {
+              go(id);
+              if (isNarrow()) {
+                setSheetOpen(true);
+                // The sheet takes room from the reader: keep the tapped verse visible.
+                requestAnimationFrame(() => requestAnimationFrame(() =>
+                  document.querySelector('.col-read .verse.selected, .col-read .iverse.selected')?.scrollIntoView({ block: 'nearest' })));
+              }
+            }} noteKeys={noteKeys} search={search} onCloseSearch={() => setSearch(null)}
             onConcordance={showConcordance} onFocusVerse={(id) => go(id)} />
         </div>
         <div className="col col-links">
           <XrefPanel bible={bible} xrefs={xrefs} selected={selected} filters={filters} setFilters={setFilters}
             onGo={(id) => go(id)} onLemma={showConcordance} onAdd={addToChain} activeChainTitle={activeChain?.title ?? null}
-            note={wb.notes[selOsis]?.text ?? ''} setNote={(t) => actions.setNote(selOsis, t)} />
+            note={wb.notes[selOsis]?.text ?? ''} setNote={(t) => actions.setNote(selOsis, t)} openNoteSignal={noteSignal} />
         </div>
         <div className="col col-study">
           <Workbench bible={bible} xrefs={xrefs} wb={wb} actions={actions} selected={selected}
@@ -191,6 +194,11 @@ function Main({ bible, xrefs }: { bible: Bible; xrefs: Xrefs }) {
       </main>
 
       <StatusBar onOpenOffline={() => setAboutOpen('offline')} />
+      {sheetOpen && tab === 'read' && !search && (
+        <VerseSheet bible={bible} id={selected} linkCount={outCount(xrefs, selected)} hasNote={!!wb.notes[selOsis]}
+          onCrossRefs={() => setTab('links')} onAddChain={() => { addToChain(selected, 0); setSheetOpen(false); }}
+          onNote={() => { setTab('links'); setNoteSignal((n) => n + 1); }} onClose={() => setSheetOpen(false)} />
+      )}
       <footer className="credits">
         Scripture: KJV (public domain)
         {alt && textMode !== 'kjv' && <> · <a href={alt.source} target="_blank" rel="noreferrer">{alt.short}</a> © Bridge Connectivity Solutions, <a href="https://creativecommons.org/licenses/by-sa/4.0/" target="_blank" rel="noreferrer">CC BY-SA 4.0</a></>}
@@ -198,6 +206,7 @@ function Main({ bible, xrefs }: { bible: Bible; xrefs: Xrefs }) {
         {xrefs.links && <> · Hebrew/Greek: <a href="https://github.com/STEPBible/STEPBible-Data" target="_blank" rel="noreferrer">STEPBible.org</a>, <a href="https://creativecommons.org/licenses/by/4.0/" target="_blank" rel="noreferrer">CC BY 4.0</a></>}
         {' · '}Data adapted by MediBible · <button className="linklike" onClick={() => setAboutOpen('top')}>About &amp; licences</button>
       </footer>
+      <BottomTabs tab={tab} setTab={setTab} linkCount={outCount(xrefs, selected)} />
       {aboutOpen && <About onClose={() => setAboutOpen(false)} focusOffline={aboutOpen === 'offline'} />}
     </div>
     </TextContext.Provider>
