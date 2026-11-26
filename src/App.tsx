@@ -1,0 +1,134 @@
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { Bible, DEFAULT_FILTERS, Filters, Xrefs, fromOsis, loadData, osisOf, parseRef, searchText } from './data';
+import { useWorkbench } from './store';
+import { Reader, View } from './components/Reader';
+import { XrefPanel } from './components/XrefPanel';
+import { Workbench } from './components/Workbench';
+
+export default function App() {
+  const [data, setData] = useState<{ bible: Bible; xrefs: Xrefs } | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  useEffect(() => {
+    loadData().then(setData).catch((e) => setError(e instanceof Error ? e.message : String(e)));
+  }, []);
+  if (error) return <div className="splash"><h1>MediBible</h1><p className="warn">{error}</p></div>;
+  if (!data) return <div className="splash"><h1>MediBible</h1><p className="muted">Loading 31,102 verses and 344,794 cross-references…</p></div>;
+  return <Main bible={data.bible} xrefs={data.xrefs} />;
+}
+
+type MobileTab = 'read' | 'links' | 'study';
+const isNarrow = () => window.matchMedia('(max-width: 900px)').matches;
+
+function idFromHash(bible: Bible): number {
+  const h = decodeURIComponent(location.hash.replace(/^#\/?/, ''));
+  if (!h) return -1;
+  const id = fromOsis(bible, h);
+  if (id >= 0) return id;
+  return parseRef(bible, h)?.start ?? -1;
+}
+
+function Main({ bible, xrefs }: { bible: Bible; xrefs: Xrefs }) {
+  const { wb, actions, saveError } = useWorkbench();
+  const [selected, setSelected] = useState(() => {
+    const h = idFromHash(bible);
+    return h >= 0 ? h : fromOsis(bible, 'John.1.1');
+  });
+  const [view, setView] = useState<View>({ book: bible.vBook[selected], chapter: bible.vChap[selected] });
+  const [history, setHistory] = useState<number[]>([]);
+  const [filters, setFilters] = useState<Filters>(DEFAULT_FILTERS);
+  const [query, setQuery] = useState('');
+  const [search, setSearch] = useState<{ query: string; results: number[]; total: number } | null>(null);
+  const [tab, setTab] = useState<MobileTab>('read');
+
+  const go = useCallback((id: number, opts: { push?: boolean; tab?: MobileTab } = {}) => {
+    setSelected((cur) => {
+      if (opts.push !== false && cur !== id) setHistory((h) => [...h.slice(-99), cur]);
+      return id;
+    });
+    setView({ book: bible.vBook[id], chapter: bible.vChap[id] });
+    setSearch(null);
+    if (opts.tab && isNarrow()) setTab(opts.tab);
+  }, [bible]);
+
+  useEffect(() => {
+    try { window.history.replaceState(null, '', `#/${osisOf(bible, selected)}`); } catch { /* sandboxed */ }
+    document.title = `MediBible`;
+  }, [bible, selected]);
+
+  useEffect(() => {
+    const onHash = () => { const id = idFromHash(bible); if (id >= 0) go(id); };
+    window.addEventListener('hashchange', onHash);
+    return () => window.removeEventListener('hashchange', onHash);
+  }, [bible, go]);
+
+  const back = () => {
+    if (!history.length) return;
+    const prev = history[history.length - 1];
+    setHistory((h) => h.slice(0, -1));
+    go(prev, { push: false });
+  };
+
+  const submit = (e: React.FormEvent) => {
+    e.preventDefault();
+    const q = query.trim();
+    if (!q) return;
+    const ref = parseRef(bible, q);
+    if (ref) {
+      go(ref.start, { tab: ref.wholeChapter ? 'read' : 'links' });
+      return;
+    }
+    setSearch({ query: q, ...searchText(bible, q) });
+    if (isNarrow()) setTab('read');
+  };
+
+  const activeChain = wb.chains.find((c) => c.id === wb.activeChainId) ?? null;
+  const addToChain = (id: number, span: number) => {
+    const chainId = activeChain?.id ?? actions.createChain('New chain');
+    actions.addStep(chainId, osisOf(bible, id), osisOf(bible, id + span));
+  };
+
+  const noteKeys = useMemo(() => new Set(Object.keys(wb.notes)), [wb.notes]);
+  const selOsis = osisOf(bible, selected);
+
+  return (
+    <div className="app" data-tab={tab}>
+      <header className="topbar">
+        <h1 className="brand">Medi<span>Bible</span></h1>
+        <form className="search" onSubmit={submit} role="search">
+          <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Reference (Isa 53:5) or words (“lamb of God”)" aria-label="Search" />
+          <button className="btn" type="submit">Go</button>
+        </form>
+        <button className="btn ghost" onClick={back} disabled={!history.length} title="Back to previous verse">‹ Back</button>
+      </header>
+
+      <nav className="mobile-tabs seg" role="tablist">
+        {(['read', 'links', 'study'] as MobileTab[]).map((t) => (
+          <button key={t} role="tab" aria-selected={tab === t} onClick={() => setTab(t)}>
+            {{ read: 'Read', links: 'Cross-refs', study: 'Study' }[t]}
+          </button>
+        ))}
+      </nav>
+
+      <main className="columns">
+        <div className="col col-read">
+          <Reader bible={bible} xrefs={xrefs} view={view} setView={setView} selected={selected}
+            onSelect={(id) => go(id, { tab: 'links' })} noteKeys={noteKeys} search={search} onCloseSearch={() => setSearch(null)} />
+        </div>
+        <div className="col col-links">
+          <XrefPanel bible={bible} xrefs={xrefs} selected={selected} filters={filters} setFilters={setFilters}
+            onGo={(id) => go(id)} onAdd={addToChain} activeChainTitle={activeChain?.title ?? null}
+            note={wb.notes[selOsis]?.text ?? ''} setNote={(t) => actions.setNote(selOsis, t)} />
+        </div>
+        <div className="col col-study">
+          <Workbench bible={bible} xrefs={xrefs} wb={wb} actions={actions} selected={selected}
+            onGo={(id) => go(id, { tab: 'links' })} saveError={saveError} />
+        </div>
+      </main>
+
+      <footer className="credits">
+        Scripture: {bible.translation} (public domain) · Cross-references: <a href="https://www.openbible.info/labs/cross-references/" target="_blank" rel="noreferrer">openbible.info</a> (CC BY), derived from the Treasury of Scripture Knowledge
+        {xrefs.links && <> · Hebrew/Greek: <a href="https://github.com/STEPBible/STEPBible-Data" target="_blank" rel="noreferrer">STEPBible.org</a> TAHOT, TAGNT, TBESH, TBESG (CC BY 4.0)</>}
+      </footer>
+    </div>
+  );
+}
