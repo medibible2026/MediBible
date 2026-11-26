@@ -324,3 +324,8 @@ mark { background: var(--mark); color: inherit; border-radius: 2px; }
 button.lemma { cursor: pointer; font: inherit; color: inherit; }
 button.lemma:hover { border-color: var(--accent); }
 .nav-arrows { display: inline-flex; gap: 6px; }
+
+/* Translations */
+.passage { display: flex; flex-direction: column; gap: 3px; }
+.passage > .scripture + .scripture { padding-top: 3px; border-top: 1px dashed var(--line); }
+.lang-ta { font-family: 'Noto Serif Tamil', 'Nirmala UI', 'Latha', 'Tamil Sangam MN', var(--serif); line-height: 1.75; font-size: 0.97em; }

@@ -19,6 +19,7 @@ Raw sources:
 - `data/raw/xref/cross_references.txt` from https://a.openbible.info/data/cross-references.zip (CC BY)
 - `data/raw/KJV.json` from https://github.com/scrollmapper/bible_databases (`formats/json/KJV.json`, public domain)
 - `data/raw/stepbible/` from https://github.com/STEPBible/STEPBible-Data (CC BY 4.0): `tahot1-4.txt` (TAHOT Gen-Deu, Jos-Est, Job-Sng, Isa-Mal), `tagnt1-2.txt` (TAGNT Mat-Jhn, Act-Rev), `tbesh.txt`, `tbesg.txt`
+- `data/raw/tam2017/vpl/tam2017_vpl.txt` from https://ebible.org/Scriptures/tam2017_vpl.zip: Tamil Indian Revised Version (IRV), © 2017, 2019 Bridge Connectivity Solutions, CC BY-SA 4.0
 
 ## Features (MVP)
 
@@ -38,6 +39,7 @@ Raw sources:
 - **Interlinear reader** (KJV / Interlinear toggle in the reader): every Hebrew (Leningrad Codex) and Greek word under the KJV verse, with transliteration, gloss and Strong's number. Hebrew reads right to left. For the NT you can switch the Greek text between the **TR** (behind the KJV) and **NA28**; the edition flags come from TAGNT's editions column, so bracketed passages such as Mark 16:9–20 appear in both.
   - Click a word for its dictionary form, grammar in plain English (e.g. "verb, Qal, sequential imperfect (wayyiqtol), 3rd person masculine singular"), the STEPBible definition, and **every verse that uses it** (a concordance by Strong's number).
   - The Hebrew/Greek word chips on cross-references open the same concordance.
+- **Tamil**: a translation picker (KJV / தமிழ் IRV / KJV + தமிழ் IRV) applies everywhere verses appear: reader, interlinear, cross-references, graph tooltips, chains and Markdown export. Typing Tamil in search searches the Tamil text. The Tamil IRV is CC BY-SA 4.0, so material shared from it must carry the same license. The Tamil Old Version (TAOVBSI) is not included: it is © Bible Society of India and needs their written permission for full-text use.
 - **Chains**: ordered study paths with a note on each step. Export as Markdown.
 - **Connect**: finds the shortest chains of cross-references between two passages (e.g. Gen 3:15 → Rev 12:9).
 - **Notes** on any verse, and a JSON **backup**/restore. Everything is stored in this browser only.
@@ -47,6 +49,8 @@ Raw sources:
 - `scripts/build-data.mjs`: raw data → compact JSON
 - `scripts/build-links.mjs`: classifies every link from the STEPBible tagging (→ `public/data/links.json`)
 - `scripts/build-interlinear.mjs`: per-book word data, lexicon, definitions and concordance (→ `public/data/interlinear/`, `lexicon.json`, `defs-*.json`, `concordance.json`)
+- `scripts/build-translations.mjs`: eBible.org verse-per-line translations aligned to the KJV verse index (→ `public/data/tam2017.json`)
+- `src/text.tsx`: translation setting shared across the app (`Passage`, `TextModeSelect`)
 - `scripts/lib/stepbible.mjs`: shared STEPBible readers and KJV versification mapping
 - `src/morph.ts`: Hebrew (OSHB) and Greek (Robinson) grammar codes to plain English
 - `src/data.ts`: data model, reference parser, search, path finder

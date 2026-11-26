@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Bible, IWord, OT_BOOKS, Xrefs, loadInterlinear, osisOf, outCount, refLabel } from '../data';
 import { WordPanel } from './WordPanel';
+import { Passage, TextModeSelect, useTextPrefs } from '../text';
 
 export interface View {
   book: number;
@@ -12,6 +13,7 @@ export interface SearchState {
   results: number[];
   total: number;
   kind?: 'text' | 'lemma';
+  lang?: 'en' | 'ta'; // which translation was searched
 }
 
 interface Props {
@@ -49,6 +51,7 @@ export function Reader({ bible, xrefs, view, setView, selected, onSelect, noteKe
   const [interError, setInterError] = useState<string | null>(null);
   const [word, setWord] = useState<{ verse: number; index: number; w: IWord } | null>(null);
 
+  const { alt } = useTextPrefs();
   const book = bible.books[view.book];
   const first = bible.chapterStart[view.book][view.chapter - 1];
   const count = book.chapters[view.chapter - 1];
@@ -92,7 +95,9 @@ export function Reader({ bible, xrefs, view, setView, selected, onSelect, noteKe
               <li key={id}>
                 <button className="result" onClick={() => onSelect(id)}>
                   <span className="ref">{refLabel(bible, id)}</span>
-                  <span className="scripture">{search.kind === 'lemma' ? bible.texts[id] : highlight(bible.texts[id], search.query)}</span>
+                  {search.lang === 'ta' && alt
+                    ? <span className="scripture lang-ta" lang="ta">{highlight(alt.texts[id], search.query)}</span>
+                    : search.kind === 'lemma' ? <Passage bible={bible} id={id} /> : <span className="scripture">{highlight(bible.texts[id], search.query)}</span>}
                 </button>
               </li>
             ))}
@@ -119,9 +124,10 @@ export function Reader({ bible, xrefs, view, setView, selected, onSelect, noteKe
           ))}
         </select>
         <div className="seg" role="tablist" aria-label="Reading mode">
-          <button role="tab" aria-selected={mode === 'text'} onClick={() => setMode('text')}>KJV</button>
+          <button role="tab" aria-selected={mode === 'text'} onClick={() => setMode('text')}>Text</button>
           <button role="tab" aria-selected={mode === 'interlinear'} onClick={() => setMode('interlinear')}>Interlinear</button>
         </div>
+        <TextModeSelect />
         {mode === 'interlinear' && !isHebrew && (
           <select aria-label="Greek text" value={greekText} onChange={(e) => setGreek(e.target.value as GreekText)}
             title="TR: the Textus Receptus behind the KJV. NA: the modern critical text (Nestle-Aland 27/28).">
@@ -156,7 +162,7 @@ export function Reader({ bible, xrefs, view, setView, selected, onSelect, noteKe
                 <button key={id} ref={isSel ? (el) => { selRef.current = el; } : undefined}
                   className={`verse${isSel ? ' selected' : ''}`} onClick={() => onSelect(id)} aria-pressed={isSel}>
                   <sup className="vnum">{i + 1}</sup>
-                  <span className="scripture">{bible.texts[id]}</span>
+                  <Passage bible={bible} id={id} />
                   {meta}
                 </button>
               );
@@ -166,7 +172,7 @@ export function Reader({ bible, xrefs, view, setView, selected, onSelect, noteKe
               <div key={id} ref={isSel ? (el) => { selRef.current = el; } : undefined} className={`iverse${isSel ? ' selected' : ''}`}>
                 <button className="verse" onClick={() => onSelect(id)} aria-pressed={isSel}>
                   <sup className="vnum">{i + 1}</sup>
-                  <span className="scripture kjv-line">{bible.texts[id]}</span>
+                  <Passage bible={bible} id={id} className="kjv-line" />
                   {meta}
                 </button>
                 <div className={`words ${isHebrew ? 'heb' : 'grk'}`} dir={isHebrew ? 'rtl' : 'ltr'}>

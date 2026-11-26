@@ -1,5 +1,6 @@
 import { useRef, useState } from 'react';
 import { Bible, Xrefs, findPaths, fromOsis, osisOf, parseRef, passageText, refLabel } from '../data';
+import { Passage, useDisplayTexts } from '../text';
 import { Chain, Workbench as WB, WorkbenchActions, validate } from '../store';
 
 interface Props {
@@ -85,7 +86,8 @@ function label(bible: Bible, start: string, end: string) {
 
 function ChainEditor({ bible, chain, actions, onGo }: { bible: Bible; chain: Chain; actions: WorkbenchActions; onGo: (id: number) => void }) {
   const [copied, setCopied] = useState(false);
-  const md = () => chainMarkdown(bible, chain);
+  const shown = useDisplayTexts(bible);
+  const md = () => chainMarkdown(bible, chain, shown);
   const copy = async () => {
     try {
       await navigator.clipboard.writeText(md());
@@ -123,7 +125,7 @@ function ChainEditor({ bible, chain, actions, onGo }: { bible: Bible; chain: Cha
                 <button className="btn ghost icon small" aria-label="Move down" disabled={i === chain.steps.length - 1} onClick={() => actions.moveStep(chain.id, s.id, 1)}>↓</button>
                 <button className="btn ghost icon small" aria-label="Remove" onClick={() => actions.removeStep(chain.id, s.id)}>✕</button>
               </div>
-              {a >= 0 && <p className="scripture xref-text">{passageText(bible, a, span, 4)}</p>}
+              {a >= 0 && <p className="xref-text"><Passage bible={bible} id={a} span={span} max={4} /></p>}
               <textarea className="note" rows={1} placeholder="Why this link? (verbal parallel, type, fulfilment…)" value={s.note}
                 onChange={(e) => actions.setStepNote(chain.id, s.id, e.target.value)} />
             </li>
@@ -137,17 +139,20 @@ function ChainEditor({ bible, chain, actions, onGo }: { bible: Bible; chain: Cha
   );
 }
 
-function chainMarkdown(bible: Bible, chain: Chain): string {
+function chainMarkdown(bible: Bible, chain: Chain, shown: { label: string; texts: string[] }[]): string {
   const lines = [`# ${chain.title}`, ''];
   if (chain.description.trim()) lines.push(chain.description.trim(), '');
   chain.steps.forEach((s, i) => {
     const a = fromOsis(bible, s.start), b = fromOsis(bible, s.end);
     const span = b > a ? b - a : 0;
     lines.push(`## ${i + 1}. ${a >= 0 ? refLabel(bible, a, span) : s.start}`, '');
-    if (a >= 0) lines.push(`> ${passageText(bible, a, span, 999)}`, '');
+    if (a >= 0) {
+      for (const t of shown) lines.push(`> ${shown.length > 1 ? `**${t.label}:** ` : ''}${passageText(bible, a, span, 999, t.texts)}`, '');
+    }
     if (s.note.trim()) lines.push(s.note.trim(), '');
   });
-  lines.push('---', `Scripture: ${bible.translation} (public domain). Cross-references: openbible.info (CC BY).`);
+  const credits = shown.map((t) => (t.label === 'KJV' ? 'KJV (public domain)' : `${t.label} (CC BY-SA 4.0, Bridge Connectivity Solutions, via eBible.org)`));
+  lines.push('---', `Scripture: ${credits.join('; ')}. Cross-references: openbible.info (CC BY).`);
   return lines.join('\n');
 }
 
@@ -210,7 +215,7 @@ function Connect({ bible, xrefs, actions, selected, onGo, onSaved }: {
             {p.map((v) => (
               <li key={v}>
                 <button className="xref-ref" onClick={() => onGo(v)}>{refLabel(bible, v)}</button>
-                <span className="scripture small-note">{bible.texts[v]}</span>
+                <Passage bible={bible} id={v} className="small-note" />
               </li>
             ))}
           </ol>

@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
-  Bible, DEFAULT_FILTERS, Filters, Xrefs, fromOsis, lexEntry, loadConcordance, loadData, loadLexicon, osisOf, parseRef, searchText, strongBase,
+  ALT_TRANSLATION, Bible, DEFAULT_FILTERS, Filters, Translation, Xrefs, fromOsis, hasTamil, lexEntry, loadConcordance, loadData, loadLexicon,
+  loadTranslation, osisOf, parseRef, searchText, strongBase,
 } from './data';
+import { TextContext, TextMode } from './text';
 import { useWorkbench } from './store';
 import { Reader, SearchState, View } from './components/Reader';
 import { XrefPanel } from './components/XrefPanel';
@@ -41,6 +43,28 @@ function Main({ bible, xrefs }: { bible: Bible; xrefs: Xrefs }) {
   const [query, setQuery] = useState('');
   const [search, setSearch] = useState<SearchState | null>(null);
   const [tab, setTab] = useState<MobileTab>('read');
+  const [textMode, setTextModeState] = useState<TextMode>(() => {
+    try { return (localStorage.getItem('medibible.textMode') as TextMode) || 'kjv'; } catch { return 'kjv'; }
+  });
+  const setTextMode = (m: TextMode) => {
+    setTextModeState(m);
+    try { localStorage.setItem('medibible.textMode', m); } catch { /* per-viewer preference only */ }
+  };
+  const [alt, setAlt] = useState<Translation | null>(null);
+  const [altError, setAltError] = useState<string | null>(null);
+  const ensureAlt = useCallback(async () => {
+    try {
+      const t = await loadTranslation(ALT_TRANSLATION.id);
+      setAlt(t);
+      setAltError(null);
+      return t;
+    } catch (e) {
+      setAltError(e instanceof Error ? e.message : String(e));
+      return null;
+    }
+  }, []);
+  useEffect(() => { if (textMode !== 'kjv' && !alt) ensureAlt(); }, [textMode, alt, ensureAlt]);
+  const textPrefs = useMemo(() => ({ mode: textMode, setMode: setTextMode, alt, altError }), [textMode, alt, altError]);
 
   const go = useCallback((id: number, opts: { push?: boolean; tab?: MobileTab } = {}) => {
     setSelected((cur) => {
@@ -70,7 +94,7 @@ function Main({ bible, xrefs }: { bible: Bible; xrefs: Xrefs }) {
     go(prev, { push: false });
   };
 
-  const submit = (e: React.FormEvent) => {
+  const submit = async (e: React.FormEvent) => {
     e.preventDefault();
     const q = query.trim();
     if (!q) return;
@@ -79,7 +103,15 @@ function Main({ bible, xrefs }: { bible: Bible; xrefs: Xrefs }) {
       go(ref.start, { tab: ref.wholeChapter ? 'read' : 'links' });
       return;
     }
-    setSearch({ query: q, kind: 'text', ...searchText(bible, q) });
+    if (hasTamil(q)) {
+      // Tamil script: search the Tamil translation and make sure it is shown.
+      if (textMode === 'kjv') setTextMode('both');
+      const t = alt ?? (await ensureAlt());
+      if (!t) return;
+      setSearch({ query: q, kind: 'text', lang: 'ta', ...searchText(bible, q, 300, t.texts) });
+    } else {
+      setSearch({ query: q, kind: 'text', lang: 'en', ...searchText(bible, q) });
+    }
     if (isNarrow()) setTab('read');
   };
 
@@ -107,11 +139,12 @@ function Main({ bible, xrefs }: { bible: Bible; xrefs: Xrefs }) {
   const selOsis = osisOf(bible, selected);
 
   return (
+    <TextContext.Provider value={textPrefs}>
     <div className="app" data-tab={tab}>
       <header className="topbar">
         <h1 className="brand">Medi<span>Bible</span></h1>
         <form className="search" onSubmit={submit} role="search">
-          <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Reference (Isa 53:5) or words (“lamb of God”)" aria-label="Search" />
+          <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Reference (Isa 53:5), words (“lamb of God”) or தமிழ்" aria-label="Search" />
           <button className="btn" type="submit">Go</button>
         </form>
         <button className="btn ghost" onClick={back} disabled={!history.length} title="Back to previous verse">‹ Back</button>
@@ -144,8 +177,10 @@ function Main({ bible, xrefs }: { bible: Bible; xrefs: Xrefs }) {
 
       <footer className="credits">
         Scripture: {bible.translation} (public domain) · Cross-references: <a href="https://www.openbible.info/labs/cross-references/" target="_blank" rel="noreferrer">openbible.info</a> (CC BY), derived from the Treasury of Scripture Knowledge
+        {alt && textMode !== 'kjv' && <> · Tamil: <a href={alt.source} target="_blank" rel="noreferrer">{alt.short}</a> {alt.license}</>}
         {xrefs.links && <> · Hebrew/Greek: <a href="https://github.com/STEPBible/STEPBible-Data" target="_blank" rel="noreferrer">STEPBible.org</a> TAHOT, TAGNT, TBESH, TBESG (CC BY 4.0)</>}
       </footer>
     </div>
+    </TextContext.Provider>
   );
 }

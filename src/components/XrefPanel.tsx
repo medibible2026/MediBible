@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useState } from 'react';
 import {
   Bible, Filters, KIND_INFO, LINK_KINDS, LinkKind, Xrefs, XrefEntry, applyFilters, inCount, incoming, linkKind, osisOf, outCount,
-  outgoing, passageText, refLabel,
+  outgoing, refLabel,
 } from '../data';
 import { Evidence } from './Evidence';
+import { Passage } from '../text';
 import { NetworkGraph } from './NetworkGraph';
 import { CanonArcs } from './CanonArcs';
 
@@ -74,7 +75,7 @@ export function XrefPanel({ bible, xrefs, selected, filters, setFilters, onGo, o
           <h2>{refLabel(bible, selected)}</h2>
           <button className="btn small" onClick={() => onAdd(selected, 0)} title={addLabel}>+ Chain</button>
         </div>
-        <p className="scripture focus-text">{bible.texts[selected]}</p>
+        <p className="focus-text"><Passage bible={bible} id={selected} /></p>
         <textarea
           className="note"
           placeholder={`Your note on ${refLabel(bible, selected)}…`}
@@ -228,7 +229,7 @@ function XrefRow({ bible, xrefs, entry, root, parent, filters, depth, onGo, onAd
         )}
         <button className="btn ghost small" onClick={() => onAdd(entry.target, entry.span)} title="Add to study chain">＋</button>
       </div>
-      <p className="scripture xref-text">{passageText(bible, entry.target, entry.span)}</p>
+      <p className="xref-text"><Passage bible={bible} id={entry.target} span={entry.span} /></p>
       <Evidence xrefs={xrefs} link={entry.link} onLemma={onLemma} />
       {open && (
         <ul className="xref-children" aria-label={`Onward from ${osisOf(bible, entry.target)}`}>

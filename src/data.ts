@@ -94,6 +94,19 @@ function getJson<T>(name: string): Promise<T> {
   return jsonCache.get(name) as Promise<T>;
 }
 
+/** A further translation aligned verse-for-verse with the KJV (scripts/build-translations.mjs). */
+export interface Translation {
+  id: string;
+  short: string;
+  name: string;
+  lang: string;
+  license: string;
+  source: string;
+  texts: string[];
+}
+export const ALT_TRANSLATION = { id: 'tam2017', short: 'தமிழ் IRV', lang: 'ta' };
+export const loadTranslation = (id: string) => getJson<Translation>(`${id}.json`);
+
 export const loadInterlinear = (osis: string) => getJson<{ verses: Record<string, IWord[]> }>(`interlinear/${osis}.json`);
 export const loadLexicon = () => getJson<Record<string, LexEntry>>('lexicon.json');
 export const loadDefinitions = (lang: 'H' | 'G') => getJson<Record<string, string>>(`defs-${lang}.json`);
@@ -256,11 +269,11 @@ export function osisOf(bible: Bible, id: number): string {
   return `${bible.books[bible.vBook[id]].osis}.${bible.vChap[id]}.${bible.vNum[id]}`;
 }
 
-export function passageText(bible: Bible, id: number, span = 0, max = 6): string {
-  if (span <= 0) return bible.texts[id];
+export function passageText(bible: Bible, id: number, span = 0, max = 6, texts: string[] = bible.texts): string {
+  if (span <= 0) return texts[id];
   const parts: string[] = [];
   const last = Math.min(id + span, id + max - 1);
-  for (let v = id; v <= last; v++) parts.push(`${bible.vNum[v]} ${bible.texts[v]}`);
+  for (let v = id; v <= last; v++) parts.push(`${bible.vNum[v]} ${texts[v]}`);
   if (id + span > last) parts.push('…');
   return parts.join(' ');
 }
@@ -334,12 +347,16 @@ export function fromOsis(bible: Bible, osis: string): number {
 
 // ---------- Text search ----------
 
-let lowerCache: string[] | null = null;
+const lowerCaches = new WeakMap<string[], string[]>();
 
-export function searchText(bible: Bible, query: string, limit = 300): { results: number[]; total: number } {
+/** True when the text contains Tamil script (search then runs over the Tamil translation). */
+export const hasTamil = (s: string) => /[஀-௿]/.test(s);
+
+export function searchText(bible: Bible, query: string, limit = 300, texts: string[] = bible.texts): { results: number[]; total: number } {
   const terms = query.toLowerCase().split(/\s+/).filter(Boolean);
   if (!terms.length) return { results: [], total: 0 };
-  if (!lowerCache) lowerCache = bible.texts.map((t) => t.toLowerCase());
+  let lowerCache = lowerCaches.get(texts);
+  if (!lowerCache) { lowerCache = texts.map((t) => t.toLowerCase()); lowerCaches.set(texts, lowerCache); }
   const phrase = query.trim().startsWith('"') ? query.toLowerCase().replace(/"/g, '').trim() : null;
   const results: number[] = [];
   let total = 0;

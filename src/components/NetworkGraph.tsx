@@ -1,8 +1,9 @@
 import { useMemo, useState } from 'react';
 import { forceCollide, forceLink, forceManyBody, forceSimulation, forceX, forceY, SimulationLinkDatum, SimulationNodeDatum } from 'd3-force';
 import {
-  Bible, Filters, KIND_INFO, LINK_KINDS, LinkKind, OT_BOOKS, Xrefs, XrefEntry, applyFilters, linkKind, outgoing, passageText, refLabel, refShort,
+  Bible, Filters, KIND_INFO, LINK_KINDS, LinkKind, OT_BOOKS, Xrefs, XrefEntry, applyFilters, linkKind, outgoing, refLabel, refShort,
 } from '../data';
+import { Passage } from '../text';
 
 interface Props {
   bible: Bible;
@@ -155,7 +156,7 @@ export function NetworkGraph({ bible, xrefs, center, entries, filters, onGo }: P
         {hover && (
           <div className="graph-tip">
             <b>{refLabel(bible, hover.id, hover.span)}</b>
-            <span className="scripture">{passageText(bible, hover.id, hover.span, 3)}</span>
+            <Passage bible={bible} id={hover.id} span={hover.span} max={3} />
             {hover.ring !== 0 && <span className="muted small-note">Click to open</span>}
           </div>
         )}
