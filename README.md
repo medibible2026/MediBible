@@ -35,6 +35,9 @@ Raw sources:
 - **Graph views** (List / Network / Whole Bible toggle on the cross-reference panel, with **⤢ Expand** to fill the window). Both views follow the current filters.
   - *Network*: the selected verse and its top 10–45 links, colored by link type, plus dashed links between the neighbours to show clusters. An "onward links" option adds a second ring. Click a passage to recenter on it.
   - *Whole Bible*: an arc diagram of the canon, in the style of Harrison & Römhild. The selected verse's links are drawn in color over a faint background of the most-voted links. Click anywhere to open that chapter or linked passage.
+- **Interlinear reader** (KJV / Interlinear toggle in the reader): every Hebrew (Leningrad Codex) and Greek word under the KJV verse, with transliteration, gloss and Strong's number. Hebrew reads right to left. For the NT you can switch the Greek text between the **TR** (behind the KJV) and **NA28**; the edition flags come from TAGNT's editions column, so bracketed passages such as Mark 16:9–20 appear in both.
+  - Click a word for its dictionary form, grammar in plain English (e.g. "verb, Qal, sequential imperfect (wayyiqtol), 3rd person masculine singular"), the STEPBible definition, and **every verse that uses it** (a concordance by Strong's number).
+  - The Hebrew/Greek word chips on cross-references open the same concordance.
 - **Chains**: ordered study paths with a note on each step. Export as Markdown.
 - **Connect**: finds the shortest chains of cross-references between two passages (e.g. Gen 3:15 → Rev 12:9).
 - **Notes** on any verse, and a JSON **backup**/restore. Everything is stored in this browser only.
@@ -43,6 +46,9 @@ Raw sources:
 
 - `scripts/build-data.mjs`: raw data → compact JSON
 - `scripts/build-links.mjs`: classifies every link from the STEPBible tagging (→ `public/data/links.json`)
+- `scripts/build-interlinear.mjs`: per-book word data, lexicon, definitions and concordance (→ `public/data/interlinear/`, `lexicon.json`, `defs-*.json`, `concordance.json`)
+- `scripts/lib/stepbible.mjs`: shared STEPBible readers and KJV versification mapping
+- `src/morph.ts`: Hebrew (OSHB) and Greek (Robinson) grammar codes to plain English
 - `src/data.ts`: data model, reference parser, search, path finder
 - `src/store.ts`: notes and chains (localStorage)
-- `src/components/`: Reader, XrefPanel, Evidence, Workbench
+- `src/components/`: Reader, WordPanel, XrefPanel, Evidence, NetworkGraph, CanonArcs, Workbench

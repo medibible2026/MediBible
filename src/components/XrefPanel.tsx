@@ -18,6 +18,7 @@ interface Props {
   setFilters: (f: Filters) => void;
   onGo: (id: number) => void;
   onAdd: (id: number, span: number) => void;
+  onLemma: (strong: string) => void;
   activeChainTitle: string | null;
   note: string;
   setNote: (text: string) => void;
@@ -26,7 +27,7 @@ interface Props {
 const VOTE_STEPS = [-100, 0, 1, 5, 10, 25, 50];
 const PAGE = 40;
 
-export function XrefPanel({ bible, xrefs, selected, filters, setFilters, onGo, onAdd, activeChainTitle, note, setNote }: Props) {
+export function XrefPanel({ bible, xrefs, selected, filters, setFilters, onGo, onAdd, onLemma, activeChainTitle, note, setNote }: Props) {
   const [limit, setLimit] = useState(PAGE);
   const [draft, setDraft] = useState(note);
   const [view, setViewState] = useState<View>(() => {
@@ -167,7 +168,7 @@ export function XrefPanel({ bible, xrefs, selected, filters, setFilters, onGo, o
             <ul className="xref-list">
               {list.slice(0, limit).map((e) => (
                 <XrefRow key={`${e.target}-${e.span}`} bible={bible} xrefs={xrefs} entry={e} root={selected} parent={selected}
-                  filters={filters} depth={0} onGo={onGo} onAdd={onAdd} />
+                  filters={filters} depth={0} onGo={onGo} onAdd={onAdd} onLemma={onLemma} />
               ))}
             </ul>
             {list.length > limit && (
@@ -191,12 +192,13 @@ interface RowProps {
   depth: number;
   onGo: (id: number) => void;
   onAdd: (id: number, span: number) => void;
+  onLemma: (strong: string) => void;
 }
 
 const MAX_DEPTH = 3;
 const CHILDREN = 6;
 
-function XrefRow({ bible, xrefs, entry, root, parent, filters, depth, onGo, onAdd }: RowProps) {
+function XrefRow({ bible, xrefs, entry, root, parent, filters, depth, onGo, onAdd, onLemma }: RowProps) {
   const [open, setOpen] = useState(false);
   const children = useMemo(() => {
     if (!open) return [];
@@ -227,13 +229,13 @@ function XrefRow({ bible, xrefs, entry, root, parent, filters, depth, onGo, onAd
         <button className="btn ghost small" onClick={() => onAdd(entry.target, entry.span)} title="Add to study chain">＋</button>
       </div>
       <p className="scripture xref-text">{passageText(bible, entry.target, entry.span)}</p>
-      <Evidence xrefs={xrefs} link={entry.link} />
+      <Evidence xrefs={xrefs} link={entry.link} onLemma={onLemma} />
       {open && (
         <ul className="xref-children" aria-label={`Onward from ${osisOf(bible, entry.target)}`}>
           {children.length === 0 && <li className="muted small-note">No further links at this vote level.</li>}
           {children.map((c) => (
             <XrefRow key={`${c.target}-${c.span}`} bible={bible} xrefs={xrefs} entry={c} root={root} parent={entry.target}
-              filters={filters} depth={depth + 1} onGo={onGo} onAdd={onAdd} />
+              filters={filters} depth={depth + 1} onGo={onGo} onAdd={onAdd} onLemma={onLemma} />
           ))}
         </ul>
       )}

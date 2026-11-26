@@ -12,51 +12,15 @@
 //   E  English echo      – shares an uncommon KJV word only
 //   T  Thematic          – no shared wording found; the link rests on the TSK editors' judgment
 import { readFileSync, writeFileSync } from 'node:fs';
-import { dirname, join } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { join } from 'node:path';
+import { OT_BOOKS, baseOf, forEachWord, loadBibleIndex, loadLexicon, outDir, wordTags } from './lib/stepbible.mjs';
 
-const root = join(dirname(fileURLToPath(import.meta.url)), '..');
-const step = join(root, 'data', 'raw', 'stepbible');
-const outDir = join(root, 'public', 'data');
-
-const bible = JSON.parse(readFileSync(join(outDir, 'bible.json'), 'utf8'));
+const index = loadBibleIndex();
+const { bible, N, chapterStart, isOT } = index;
 const xrefs = JSON.parse(readFileSync(join(outDir, 'xrefs.json'), 'utf8'));
-const N = bible.texts.length;
-const OT_BOOKS = 39;
-
-const chapterStart = [];
-const vBook = new Uint8Array(N);
-{
-  let id = 0;
-  bible.books.forEach((b, bi) => {
-    const s = [];
-    b.chapters.forEach((n) => { s.push(id); for (let v = 0; v < n; v++) vBook[id++] = bi; });
-    chapterStart.push(s);
-  });
-}
-const isOT = (id) => vBook[id] < OT_BOOKS;
-const verseId = (book, c, v) => {
-  const ch = chapterStart[book]?.[c - 1];
-  if (ch === undefined || v < 1 || v > bible.books[book].chapters[c - 1]) return -1;
-  return ch + v - 1;
-};
 
 // ---------- Lexicons ----------
-const lexicon = new Map(); // dStrong -> { lemma, translit, gloss }
-for (const f of ['tbesh.txt', 'tbesg.txt']) {
-  for (const line of readFileSync(join(step, f), 'utf8').split(/\r?\n/)) {
-    const c = line.split('\t');
-    if (!/^[HG]\d{4}/.test(c[0] || '') || !c[1]) continue;
-    const d = c[1].split(/\s/)[0];
-    if (!/^[HG]\d{4}[A-Za-z]?$/.test(d) || lexicon.has(d)) continue;
-    lexicon.set(d, { lemma: c[3], translit: c[4], pos: c[5] || '', gloss: c[6], def: c[7] || '' });
-  }
-}
-const baseOf = (d) => d.replace(/[A-Za-z]$/, '');
-const lex = (d) => lexicon.get(d) || lexicon.get(baseOf(d));
-// Pronouns, prepositions, conjunctions, particles, articles: never evidence of a link.
-const FUNCTION_POS = /^(H:(Prep|Conj|Intg|DemP|Cond|Neg|Part|RelP|PerP|Intj)|G:(PREP|CONJ|PRT|COND|INJ|D|P|R|C|X|Q|F|K|I|S)(-|$))/;
-const isFunctionWord = (d) => FUNCTION_POS.test(lex(d)?.pos || '');
+const { lexicon, lex, isFunctionWord } = loadLexicon();
 
 // ---------- Tagged texts -> lemma sets per verse ----------
 const lemmaIndex = new Map(); // dStrong -> idx
@@ -67,38 +31,14 @@ const idxOf = (d) => {
   return i;
 };
 const verseLemmas = Array.from({ length: N }, () => new Set());
-const bookCodes = new Map(); // STEP book code -> book index (by order of appearance)
-let unmapped = 0;
-
-function addWords(file, isGreek) {
-  for (const line of readFileSync(join(step, file), 'utf8').split(/\r?\n/)) {
-    const m = line.match(/^([1-3]?[A-Z][a-z]{1,2})\.(\d+)\.(\d+)(\[(\d+)\.(\d+)\]|\((\d+)\.(\d+)\))?#\d+=/);
-    if (!m) continue;
-    if (!bookCodes.has(m[1])) bookCodes.set(m[1], bookCodes.size);
-    const book = bookCodes.get(m[1]);
-    // TAGNT gives the KJV reference in [brackets] where it differs; TAHOT lists the English ref first.
-    const [c, v] = isGreek && m[5] ? [Number(m[5]), Number(m[6])] : [Number(m[2]), Number(m[3])];
-    const id = verseId(book, c, v);
-    if (id < 0) { unmapped++; continue; }
-    const cols = line.split('\t');
-    let tags;
-    if (isGreek) {
-      tags = [(cols[3] || '').split('=')[0]];
-    } else {
-      const braced = [...(cols[4] || '').matchAll(/\{(H\d{4}[A-Za-z]?)\}/g)].map((x) => x[1]);
-      tags = braced.length ? braced : [...(cols[4] || '').matchAll(/H\d{4}[A-Za-z]?/g)].map((x) => x[0]);
-    }
-    for (const t of tags) {
-      if (!/^[HG]\d{4}/.test(t)) continue;
-      if (/^H9\d{3}/.test(t)) continue; // prefixes, suffixes, particles
-      if (isFunctionWord(t)) continue;
-      verseLemmas[id].add(idxOf(t));
-    }
+const { unmapped } = forEachWord(index, (w) => {
+  for (const t of wordTags(w)) {
+    if (!/^[HG]\d{4}/.test(t)) continue;
+    if (/^H9\d{3}/.test(t)) continue; // prefixes, suffixes, particles
+    if (isFunctionWord(t)) continue;
+    verseLemmas[w.id].add(idxOf(t));
   }
-}
-['tahot1.txt', 'tahot2.txt', 'tahot3.txt', 'tahot4.txt'].forEach((f) => addWords(f, false));
-['tagnt1.txt', 'tagnt2.txt'].forEach((f) => addWords(f, true));
-if (bookCodes.size !== 66) throw new Error(`Expected 66 STEP book codes, got ${bookCodes.size}`);
+});
 
 // Document frequency per lemma (within its testament); rare = carries evidential weight.
 // STEPBible splits common words into meaning variants (H7200G/H7200H); rarity is judged on the

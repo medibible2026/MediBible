@@ -1,9 +1,17 @@
-import { useEffect, useRef } from 'react';
-import { Bible, Xrefs, osisOf, outCount, refLabel } from '../data';
+import { useEffect, useRef, useState } from 'react';
+import { Bible, IWord, OT_BOOKS, Xrefs, loadInterlinear, osisOf, outCount, refLabel } from '../data';
+import { WordPanel } from './WordPanel';
 
 export interface View {
   book: number;
   chapter: number;
+}
+
+export interface SearchState {
+  query: string;
+  results: number[];
+  total: number;
+  kind?: 'text' | 'lemma';
 }
 
 interface Props {
@@ -14,15 +22,49 @@ interface Props {
   selected: number;
   onSelect: (id: number) => void;
   noteKeys: Set<string>;
-  search: { query: string; results: number[]; total: number } | null;
+  search: SearchState | null;
   onCloseSearch: () => void;
+  onConcordance: (strong: string) => void;
+  onFocusVerse: (id: number) => void; // select without leaving the reader (phones)
 }
 
-export function Reader({ bible, xrefs, view, setView, selected, onSelect, noteKeys, search, onCloseSearch }: Props) {
-  const selRef = useRef<HTMLButtonElement | null>(null);
+type Mode = 'text' | 'interlinear';
+type GreekText = 'tr' | 'na';
+
+// Per-viewer display preferences; the page works without storage.
+const pref = <T extends string>(key: string, fallback: T): T => {
+  try { return (localStorage.getItem(key) as T) || fallback; } catch { return fallback; }
+};
+const savePref = (key: string, v: string) => {
+  try { localStorage.setItem(key, v); } catch { /* ignore */ }
+};
+
+export function Reader({ bible, xrefs, view, setView, selected, onSelect, noteKeys, search, onCloseSearch, onConcordance, onFocusVerse }: Props) {
+  const selRef = useRef<HTMLElement | null>(null);
+  const [mode, setModeState] = useState<Mode>(() => pref<Mode>('medibible.readerMode', 'text'));
+  const [greekText, setGreekState] = useState<GreekText>(() => pref<GreekText>('medibible.greekText', 'tr'));
+  const setMode = (m: Mode) => { setModeState(m); savePref('medibible.readerMode', m); };
+  const setGreek = (g: GreekText) => { setGreekState(g); savePref('medibible.greekText', g); };
+  const [inter, setInter] = useState<{ osis: string; verses: Record<string, IWord[]> } | null>(null);
+  const [interError, setInterError] = useState<string | null>(null);
+  const [word, setWord] = useState<{ verse: number; index: number; w: IWord } | null>(null);
+
   const book = bible.books[view.book];
   const first = bible.chapterStart[view.book][view.chapter - 1];
   const count = book.chapters[view.chapter - 1];
+  const isHebrew = view.book < OT_BOOKS;
+
+  useEffect(() => {
+    if (mode !== 'interlinear' || inter?.osis === book.osis) return;
+    let live = true;
+    setInterError(null);
+    loadInterlinear(book.osis)
+      .then((d) => live && setInter({ osis: book.osis, verses: d.verses }))
+      .catch((e) => live && setInterError(e instanceof Error ? e.message : String(e)));
+    return () => { live = false; };
+  }, [mode, book.osis, inter?.osis]);
+
+  useEffect(() => { setWord(null); }, [view.book, view.chapter, mode]);
 
   useEffect(() => {
     selRef.current?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
@@ -39,7 +81,7 @@ export function Reader({ bible, xrefs, view, setView, selected, onSelect, noteKe
     return (
       <section className="panel reader" aria-label="Search results">
         <div className="panel-head">
-          <h2>“{search.query.replace(/"/g, '')}”</h2>
+          <h2>{search.kind === 'lemma' ? search.query : `“${search.query.replace(/"/g, '')}”`}</h2>
           <span className="muted">{search.total.toLocaleString()} verses{search.total > search.results.length ? ` (first ${search.results.length})` : ''}</span>
           <button className="btn ghost" onClick={onCloseSearch}>Back to reading</button>
         </div>
@@ -50,7 +92,7 @@ export function Reader({ bible, xrefs, view, setView, selected, onSelect, noteKe
               <li key={id}>
                 <button className="result" onClick={() => onSelect(id)}>
                   <span className="ref">{refLabel(bible, id)}</span>
-                  <span className="scripture">{highlight(bible.texts[id], search.query)}</span>
+                  <span className="scripture">{search.kind === 'lemma' ? bible.texts[id] : highlight(bible.texts[id], search.query)}</span>
                 </button>
               </li>
             ))}
@@ -59,6 +101,9 @@ export function Reader({ bible, xrefs, view, setView, selected, onSelect, noteKe
       </section>
     );
   }
+
+  const interReady = mode === 'interlinear' && inter?.osis === book.osis;
+  const showWords = (ws: IWord[]) => (isHebrew ? ws : ws.filter((w) => w[5] & (greekText === 'tr' ? 2 : 1)));
 
   return (
     <section className="panel reader" aria-label="Bible reader">
@@ -73,36 +118,87 @@ export function Reader({ bible, xrefs, view, setView, selected, onSelect, noteKe
             <option key={i} value={i + 1}>{i + 1}</option>
           ))}
         </select>
+        <div className="seg" role="tablist" aria-label="Reading mode">
+          <button role="tab" aria-selected={mode === 'text'} onClick={() => setMode('text')}>KJV</button>
+          <button role="tab" aria-selected={mode === 'interlinear'} onClick={() => setMode('interlinear')}>Interlinear</button>
+        </div>
+        {mode === 'interlinear' && !isHebrew && (
+          <select aria-label="Greek text" value={greekText} onChange={(e) => setGreek(e.target.value as GreekText)}
+            title="TR: the Textus Receptus behind the KJV. NA: the modern critical text (Nestle-Aland 27/28).">
+            <option value="tr">Greek: TR</option>
+            <option value="na">Greek: NA28</option>
+          </select>
+        )}
         <div className="spacer" />
-        <button className="btn ghost icon" aria-label="Previous chapter" onClick={() => step(-1)}>‹</button>
-        <button className="btn ghost icon" aria-label="Next chapter" onClick={() => step(1)}>›</button>
+        <span className="nav-arrows">
+          <button className="btn ghost icon" aria-label="Previous chapter" onClick={() => step(-1)}>‹</button>
+          <button className="btn ghost icon" aria-label="Next chapter" onClick={() => step(1)}>›</button>
+        </span>
       </div>
       <div className="scroll">
         <h3 className="chapter-title">{book.name} {view.chapter}</h3>
-        <div className="verses">
+        {mode === 'interlinear' && !interReady && (
+          interError ? <p className="warn">{interError}</p> : <p className="muted">Loading {isHebrew ? 'Hebrew' : 'Greek'} text for {book.name}…</p>
+        )}
+        <div className={`verses${interReady ? ' interlinear' : ''}`}>
           {Array.from({ length: count }, (_, i) => {
             const id = first + i;
             const n = outCount(xrefs, id);
             const isSel = id === selected;
+            const meta = (
+              <span className="vmeta">
+                {noteKeys.has(osisOf(bible, id)) && <span className="dot" title="Has a note" />}
+                {n > 0 && <span className="badge" title={`${n} cross-references`}>{n}</span>}
+              </span>
+            );
+            if (!interReady) {
+              return (
+                <button key={id} ref={isSel ? (el) => { selRef.current = el; } : undefined}
+                  className={`verse${isSel ? ' selected' : ''}`} onClick={() => onSelect(id)} aria-pressed={isSel}>
+                  <sup className="vnum">{i + 1}</sup>
+                  <span className="scripture">{bible.texts[id]}</span>
+                  {meta}
+                </button>
+              );
+            }
+            const words = showWords(inter!.verses[id] ?? []);
             return (
-              <button
-                key={id}
-                ref={isSel ? selRef : undefined}
-                className={`verse${isSel ? ' selected' : ''}`}
-                onClick={() => onSelect(id)}
-                aria-pressed={isSel}
-              >
-                <sup className="vnum">{i + 1}</sup>
-                <span className="scripture">{bible.texts[id]}</span>
-                <span className="vmeta">
-                  {noteKeys.has(osisOf(bible, id)) && <span className="dot" title="Has a note" />}
-                  {n > 0 && <span className="badge" title={`${n} cross-references`}>{n}</span>}
-                </span>
-              </button>
+              <div key={id} ref={isSel ? (el) => { selRef.current = el; } : undefined} className={`iverse${isSel ? ' selected' : ''}`}>
+                <button className="verse" onClick={() => onSelect(id)} aria-pressed={isSel}>
+                  <sup className="vnum">{i + 1}</sup>
+                  <span className="scripture kjv-line">{bible.texts[id]}</span>
+                  {meta}
+                </button>
+                <div className={`words ${isHebrew ? 'heb' : 'grk'}`} dir={isHebrew ? 'rtl' : 'ltr'}>
+                  {words.length === 0 && <span className="muted small-note">No tagged words for this verse.</span>}
+                  {words.map((w, k) => {
+                    const active = word?.verse === id && word.index === k;
+                    return (
+                      <button key={k} className={`word${active ? ' active' : ''}${w[5] & 4 ? ' qere' : ''}`}
+                        onClick={() => { setWord({ verse: id, index: k, w }); if (!isSel) onFocusVerse(id); }}
+                        aria-label={`${w[0]}, ${w[1]}, “${w[2]}”`}>
+                        <bdi lang={isHebrew ? 'he' : 'grc'} className={`w-orig orig ${isHebrew ? 'heb' : 'grk'}`}>{w[0]}</bdi>
+                        <span className="w-translit">{w[1]}</span>
+                        <span className="w-gloss" dir="ltr">{w[2]}</span>
+                        <span className="w-strong" dir="ltr">{w[3]}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
             );
           })}
         </div>
+        {interReady && (
+          <p className="muted small-note credits-inline">
+            {isHebrew ? 'Hebrew: Leningrad Codex via STEPBible TAHOT.' : `Greek: ${greekText === 'tr' ? 'Textus Receptus words' : 'NA27/28 words'} via STEPBible TAGNT.`} CC BY 4.0. Click a word for its grammar, definition and every verse that uses it.
+          </p>
+        )}
       </div>
+      {word && (
+        <WordPanel word={word.w} where={`${refLabel(bible, word.verse)}, word ${word.index + 1}`} onClose={() => setWord(null)}
+          onConcordance={onConcordance} />
+      )}
     </section>
   );
 }

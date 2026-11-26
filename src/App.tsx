@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Bible, DEFAULT_FILTERS, Filters, Xrefs, fromOsis, loadData, osisOf, parseRef, searchText } from './data';
+import {
+  Bible, DEFAULT_FILTERS, Filters, Xrefs, fromOsis, lexEntry, loadConcordance, loadData, loadLexicon, osisOf, parseRef, searchText, strongBase,
+} from './data';
 import { useWorkbench } from './store';
-import { Reader, View } from './components/Reader';
+import { Reader, SearchState, View } from './components/Reader';
 import { XrefPanel } from './components/XrefPanel';
 import { Workbench } from './components/Workbench';
 
@@ -37,7 +39,7 @@ function Main({ bible, xrefs }: { bible: Bible; xrefs: Xrefs }) {
   const [history, setHistory] = useState<number[]>([]);
   const [filters, setFilters] = useState<Filters>(DEFAULT_FILTERS);
   const [query, setQuery] = useState('');
-  const [search, setSearch] = useState<{ query: string; results: number[]; total: number } | null>(null);
+  const [search, setSearch] = useState<SearchState | null>(null);
   const [tab, setTab] = useState<MobileTab>('read');
 
   const go = useCallback((id: number, opts: { push?: boolean; tab?: MobileTab } = {}) => {
@@ -77,8 +79,22 @@ function Main({ bible, xrefs }: { bible: Bible; xrefs: Xrefs }) {
       go(ref.start, { tab: ref.wholeChapter ? 'read' : 'links' });
       return;
     }
-    setSearch({ query: q, ...searchText(bible, q) });
+    setSearch({ query: q, kind: 'text', ...searchText(bible, q) });
     if (isNarrow()) setTab('read');
+  };
+
+  // Every verse that uses a Hebrew/Greek word (by Strong's number), shown in the reader's results list.
+  const showConcordance = async (strong: string) => {
+    try {
+      const [conc, lex] = await Promise.all([loadConcordance(), loadLexicon()]);
+      const base = strongBase(strong);
+      const ids = conc[base] ?? [];
+      const e = lexEntry(lex, strong);
+      setSearch({ query: e ? `${base} ${e[0]} (${e[1]}) “${e[2]}”` : base, kind: 'lemma', results: ids.slice(0, 600), total: ids.length });
+      if (isNarrow()) setTab('read');
+    } catch {
+      setSearch({ query: `${strong}: concordance data is missing. Run "npm run data".`, kind: 'lemma', results: [], total: 0 });
+    }
   };
 
   const activeChain = wb.chains.find((c) => c.id === wb.activeChainId) ?? null;
@@ -112,11 +128,12 @@ function Main({ bible, xrefs }: { bible: Bible; xrefs: Xrefs }) {
       <main className="columns">
         <div className="col col-read">
           <Reader bible={bible} xrefs={xrefs} view={view} setView={setView} selected={selected}
-            onSelect={(id) => go(id, { tab: 'links' })} noteKeys={noteKeys} search={search} onCloseSearch={() => setSearch(null)} />
+            onSelect={(id) => go(id, { tab: 'links' })} noteKeys={noteKeys} search={search} onCloseSearch={() => setSearch(null)}
+            onConcordance={showConcordance} onFocusVerse={(id) => go(id)} />
         </div>
         <div className="col col-links">
           <XrefPanel bible={bible} xrefs={xrefs} selected={selected} filters={filters} setFilters={setFilters}
-            onGo={(id) => go(id)} onAdd={addToChain} activeChainTitle={activeChain?.title ?? null}
+            onGo={(id) => go(id)} onLemma={showConcordance} onAdd={addToChain} activeChainTitle={activeChain?.title ?? null}
             note={wb.notes[selOsis]?.text ?? ''} setNote={(t) => actions.setNote(selOsis, t)} />
         </div>
         <div className="col col-study">

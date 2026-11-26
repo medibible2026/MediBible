@@ -74,6 +74,33 @@ export const linkEvidence = (x: Xrefs, link: number): Evidence | null => x.links
 
 export const OT_BOOKS = 39;
 
+// ---------- Interlinear, lexicon, concordance (from scripts/build-interlinear.mjs; loaded on demand) ----------
+
+/** [form, transliteration, gloss in context, dStrong, grammar code, flags: 1 NA, 2 TR, 4 qere] */
+export type IWord = [string, string, string, string, string, number];
+export type LexEntry = [string, string, string, string]; // lemma, transliteration, gloss, part of speech
+
+const jsonCache = new Map<string, Promise<unknown>>();
+function getJson<T>(name: string): Promise<T> {
+  if (!jsonCache.has(name)) {
+    const p = fetch(`${import.meta.env.BASE_URL}data/${name}`)
+      .then((r) => {
+        if (!r.ok) throw new Error(`Could not load ${name} (${r.status}). Run "npm run data" first.`);
+        return r.json();
+      })
+      .catch((e) => { jsonCache.delete(name); throw e; });
+    jsonCache.set(name, p);
+  }
+  return jsonCache.get(name) as Promise<T>;
+}
+
+export const loadInterlinear = (osis: string) => getJson<{ verses: Record<string, IWord[]> }>(`interlinear/${osis}.json`);
+export const loadLexicon = () => getJson<Record<string, LexEntry>>('lexicon.json');
+export const loadDefinitions = (lang: 'H' | 'G') => getJson<Record<string, string>>(`defs-${lang}.json`);
+export const loadConcordance = () => getJson<Record<string, number[]>>('concordance.json');
+export const strongBase = (d: string) => d.replace(/[A-Za-z]$/, '');
+export const lexEntry = (lex: Record<string, LexEntry>, d: string): LexEntry | null => lex[d] ?? lex[strongBase(d)] ?? null;
+
 export async function loadData(): Promise<{ bible: Bible; xrefs: Xrefs }> {
   const base = import.meta.env.BASE_URL;
   const get = async (name: string) => {
