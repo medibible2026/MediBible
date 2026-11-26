@@ -1,4 +1,5 @@
 import { useEffect, useRef } from 'react';
+import { OfflineSection } from './OfflineSection';
 
 const REPO = 'https://github.com/medibible2026/MediBible';
 const CC_BY = 'https://creativecommons.org/licenses/by/4.0/';
@@ -38,14 +39,16 @@ const SOURCES: { name: string; by: string; href: string; licence: string; licenc
   },
 ];
 
-export function About({ onClose }: { onClose: () => void }) {
+export function About({ onClose, focusOffline = false }: { onClose: () => void; focusOffline?: boolean }) {
+  const offlineRef = useRef<HTMLHeadingElement>(null);
   const closeRef = useRef<HTMLButtonElement>(null);
   useEffect(() => {
     closeRef.current?.focus();
+    if (focusOffline) offlineRef.current?.scrollIntoView({ block: 'start' });
     const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [onClose]);
+  }, [onClose, focusOffline]);
 
   return (
     <div className="about-backdrop" onClick={onClose}>
@@ -59,6 +62,9 @@ export function About({ onClose }: { onClose: () => void }) {
           A free study tool for exploring the Bible’s cross-references, the Hebrew and Greek behind them, and the paths that connect passages.
           It is free for everyone. The source code is open under the <a href={`${REPO}/blob/main/LICENSE`} target="_blank" rel="noreferrer">MIT licence</a>.
         </p>
+
+        <h3 ref={offlineRef}>Offline</h3>
+        <OfflineSection />
 
         <h3>Sources and licences</h3>
         <ul className="about-sources">
@@ -87,6 +93,7 @@ export function About({ onClose }: { onClose: () => void }) {
         <h3>Privacy</h3>
         <p className="small-note">
           No accounts, no tracking, no ads. Your notes and study chains are stored only in this browser, so use <b>Backup</b> to keep a copy.
+          Data saved for offline use is also stored only on this device.
           The website host may keep standard server logs.
         </p>
 

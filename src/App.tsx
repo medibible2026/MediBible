@@ -9,6 +9,7 @@ import { Reader, SearchState, View } from './components/Reader';
 import { XrefPanel } from './components/XrefPanel';
 import { Workbench } from './components/Workbench';
 import { About } from './components/About';
+import { StatusBar } from './components/StatusBar';
 
 export default function App() {
   const [data, setData] = useState<{ bible: Bible; xrefs: Xrefs } | null>(null);
@@ -55,7 +56,7 @@ function Main({ bible, xrefs }: { bible: Bible; xrefs: Xrefs }) {
   const [query, setQuery] = useState('');
   const [search, setSearch] = useState<SearchState | null>(null);
   const [tab, setTab] = useState<MobileTab>('read');
-  const [aboutOpen, setAboutOpen] = useState(false);
+  const [aboutOpen, setAboutOpen] = useState<false | 'top' | 'offline'>(false);
   const [textMode, setTextModeState] = useState<TextMode>(() => {
     try { return (localStorage.getItem('medibible.textMode') as TextMode) || 'kjv'; } catch { return 'kjv'; }
   });
@@ -161,7 +162,7 @@ function Main({ bible, xrefs }: { bible: Bible; xrefs: Xrefs }) {
           <button className="btn" type="submit">Go</button>
         </form>
         <button className="btn ghost" onClick={back} disabled={!history.length} title="Back to previous verse">‹ Back</button>
-        <button className="btn ghost about-btn" onClick={() => setAboutOpen(true)} title="About, sources and licences">About</button>
+        <button className="btn ghost about-btn" onClick={() => setAboutOpen('top')} title="About, offline use, sources and licences">About</button>
       </header>
 
       <nav className="mobile-tabs seg" role="tablist">
@@ -189,14 +190,15 @@ function Main({ bible, xrefs }: { bible: Bible; xrefs: Xrefs }) {
         </div>
       </main>
 
+      <StatusBar onOpenOffline={() => setAboutOpen('offline')} />
       <footer className="credits">
         Scripture: KJV (public domain)
         {alt && textMode !== 'kjv' && <> · <a href={alt.source} target="_blank" rel="noreferrer">{alt.short}</a> © Bridge Connectivity Solutions, <a href="https://creativecommons.org/licenses/by-sa/4.0/" target="_blank" rel="noreferrer">CC BY-SA 4.0</a></>}
         {' · '}Cross-references: <a href="https://www.openbible.info/labs/cross-references/" target="_blank" rel="noreferrer">OpenBible.info</a>, <a href="https://creativecommons.org/licenses/by/4.0/" target="_blank" rel="noreferrer">CC BY 4.0</a>
         {xrefs.links && <> · Hebrew/Greek: <a href="https://github.com/STEPBible/STEPBible-Data" target="_blank" rel="noreferrer">STEPBible.org</a>, <a href="https://creativecommons.org/licenses/by/4.0/" target="_blank" rel="noreferrer">CC BY 4.0</a></>}
-        {' · '}Data adapted by MediBible · <button className="linklike" onClick={() => setAboutOpen(true)}>About &amp; licences</button>
+        {' · '}Data adapted by MediBible · <button className="linklike" onClick={() => setAboutOpen('top')}>About &amp; licences</button>
       </footer>
-      {aboutOpen && <About onClose={() => setAboutOpen(false)} />}
+      {aboutOpen && <About onClose={() => setAboutOpen(false)} focusOffline={aboutOpen === 'offline'} />}
     </div>
     </TextContext.Provider>
   );

@@ -41,6 +41,7 @@ Raw sources:
   - Click a word for its dictionary form, grammar in plain English (e.g. "verb, Qal, sequential imperfect (wayyiqtol), 3rd person masculine singular"), the STEPBible definition, and **every verse that uses it** (a concordance by Strong's number).
   - The Hebrew/Greek word chips on cross-references open the same concordance.
 - **Tamil**: a translation picker (KJV / தமிழ் IRV / KJV + தமிழ் IRV) applies everywhere verses appear: reader, interlinear, cross-references, graph tooltips, chains and Markdown export. Typing Tamil in search searches the Tamil text. The Tamil IRV is CC BY-SA 4.0, so material shared from it must carry the same license. The Tamil Old Version (TAOVBSI) is not included: it is © Bible Society of India and needs their written permission for full-text use.
+- **Works offline and installs like an app** (published site only). The first visit saves the app and the core data (KJV, cross-references, link types; about 3 MB compressed). The interlinear, lexicon, concordance and Tamil text are saved as you use them, or all at once from **About → Offline → Save everything** (about 10 MB more). New versions show an "Update now" banner. Saved data is kept per file across updates, so only changed files download again.
 - **Chains**: ordered study paths with a note on each step. Export as Markdown.
 - **Connect**: finds the shortest chains of cross-references between two passages (e.g. Gen 3:15 → Rev 12:9).
 - **Notes** on any verse, and a JSON **backup**/restore. Everything is stored in this browser only.
@@ -53,6 +54,8 @@ Raw sources:
 - `scripts/build-translations.mjs`: eBible.org verse-per-line translations aligned to the KJV verse index (→ `public/data/tam2017.json`)
 - `src/text.tsx`: translation setting shared across the app (`Passage`, `TextModeSelect`)
 - `scripts/lib/xrefs-format.mjs`, `scripts/lib/links-format.mjs`: compact column formats for cross-references and link evidence (decoded in `src/data.ts`). A link's id is its position in canonical order (by source, then target verse).
+- `scripts/build-sw.mjs`: after `vite build`, generates the service worker (`dist/sw.js`) and `dist/offline.json` with each file's content hash; `src/offline.ts` registers it and handles updates and saving
+- `scripts/make-icons.mjs`: draws the app icons in `public/icons/` (run with `npm run icons`)
 - `scripts/lib/stepbible.mjs`: shared STEPBible readers and KJV versification mapping
 - `src/morph.ts`: Hebrew (OSHB) and Greek (Robinson) grammar codes to plain English
 - `src/data.ts`: data model, reference parser, search, path finder

@@ -340,3 +340,11 @@ button.lemma:hover { border-color: var(--accent); }
 .about p { margin: 8px 0; line-height: 1.5; }
 .about-sources { margin: 0; padding-left: 18px; display: flex; flex-direction: column; gap: 8px; font-size: 13.5px; }
 @media (max-width: 900px) { .about-btn { order: 2; } }
+
+/* Offline */
+.status-bar { display: flex; align-items: center; justify-content: center; flex-wrap: wrap; gap: 6px 10px; margin: 0 16px; padding: 7px 12px;
+  border-radius: 10px; background: var(--accent-soft); color: var(--text); font-size: 13px; }
+.status-bar.offline { background: var(--warn-bg); color: var(--warn); }
+.offline-section { display: flex; flex-direction: column; gap: 8px; }
+.offline-progress { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.offline-progress progress { flex: 1; min-width: 160px; height: 10px; accent-color: var(--accent); }

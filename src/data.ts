@@ -83,7 +83,13 @@ export type LexEntry = [string, string, string, string]; // lemma, transliterati
 
 /** Fetches a data file once. Large files that are decoded into other structures use this directly. */
 async function fetchJson<T>(name: string): Promise<T> {
-  const r = await fetch(`${import.meta.env.BASE_URL}data/${name}`);
+  let r: Response;
+  try {
+    r = await fetch(`${import.meta.env.BASE_URL}data/${name}`);
+  } catch {
+    // Network failure (offline, or the server is unreachable) for a file not saved on this device.
+    throw new Error('This part could not be downloaded and has not been saved for offline use yet. Check your connection; to use it offline later, open About → Offline → “Save everything” while connected.');
+  }
   if (!r.ok) throw new Error(`Could not load ${name} (${r.status}). Run "npm run data" first.`);
   return r.json();
 }
