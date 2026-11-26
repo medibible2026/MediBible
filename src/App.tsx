@@ -8,6 +8,7 @@ import { useWorkbench } from './store';
 import { Reader, SearchState, View } from './components/Reader';
 import { XrefPanel } from './components/XrefPanel';
 import { Workbench } from './components/Workbench';
+import { About } from './components/About';
 
 export default function App() {
   const [data, setData] = useState<{ bible: Bible; xrefs: Xrefs } | null>(null);
@@ -43,6 +44,7 @@ function Main({ bible, xrefs }: { bible: Bible; xrefs: Xrefs }) {
   const [query, setQuery] = useState('');
   const [search, setSearch] = useState<SearchState | null>(null);
   const [tab, setTab] = useState<MobileTab>('read');
+  const [aboutOpen, setAboutOpen] = useState(false);
   const [textMode, setTextModeState] = useState<TextMode>(() => {
     try { return (localStorage.getItem('medibible.textMode') as TextMode) || 'kjv'; } catch { return 'kjv'; }
   });
@@ -148,6 +150,7 @@ function Main({ bible, xrefs }: { bible: Bible; xrefs: Xrefs }) {
           <button className="btn" type="submit">Go</button>
         </form>
         <button className="btn ghost" onClick={back} disabled={!history.length} title="Back to previous verse">‹ Back</button>
+        <button className="btn ghost about-btn" onClick={() => setAboutOpen(true)} title="About, sources and licences">About</button>
       </header>
 
       <nav className="mobile-tabs seg" role="tablist">
@@ -176,10 +179,13 @@ function Main({ bible, xrefs }: { bible: Bible; xrefs: Xrefs }) {
       </main>
 
       <footer className="credits">
-        Scripture: {bible.translation} (public domain) · Cross-references: <a href="https://www.openbible.info/labs/cross-references/" target="_blank" rel="noreferrer">openbible.info</a> (CC BY), derived from the Treasury of Scripture Knowledge
-        {alt && textMode !== 'kjv' && <> · Tamil: <a href={alt.source} target="_blank" rel="noreferrer">{alt.short}</a> {alt.license}</>}
-        {xrefs.links && <> · Hebrew/Greek: <a href="https://github.com/STEPBible/STEPBible-Data" target="_blank" rel="noreferrer">STEPBible.org</a> TAHOT, TAGNT, TBESH, TBESG (CC BY 4.0)</>}
+        Scripture: KJV (public domain)
+        {alt && textMode !== 'kjv' && <> · <a href={alt.source} target="_blank" rel="noreferrer">{alt.short}</a> © Bridge Connectivity Solutions, <a href="https://creativecommons.org/licenses/by-sa/4.0/" target="_blank" rel="noreferrer">CC BY-SA 4.0</a></>}
+        {' · '}Cross-references: <a href="https://www.openbible.info/labs/cross-references/" target="_blank" rel="noreferrer">OpenBible.info</a>, <a href="https://creativecommons.org/licenses/by/4.0/" target="_blank" rel="noreferrer">CC BY 4.0</a>
+        {xrefs.links && <> · Hebrew/Greek: <a href="https://github.com/STEPBible/STEPBible-Data" target="_blank" rel="noreferrer">STEPBible.org</a>, <a href="https://creativecommons.org/licenses/by/4.0/" target="_blank" rel="noreferrer">CC BY 4.0</a></>}
+        {' · '}Data adapted by MediBible · <button className="linklike" onClick={() => setAboutOpen(true)}>About &amp; licences</button>
       </footer>
+      {aboutOpen && <About onClose={() => setAboutOpen(false)} />}
     </div>
     </TextContext.Provider>
   );

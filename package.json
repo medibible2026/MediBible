@@ -6,8 +6,9 @@
   "scripts": {
     "data": "node scripts/build-data.mjs && node scripts/build-links.mjs && node scripts/build-interlinear.mjs && node scripts/build-translations.mjs",
     "dev": "vite",
-    "build": "tsc -b && vite build",
-    "preview": "vite preview"
+    "build": "node scripts/third-party-notices.mjs && tsc -b && vite build",
+    "preview": "vite preview",
+    "notices": "node scripts/third-party-notices.mjs"
   },
   "dependencies": {
     "d3-force": "^3.0.0",
@@ -21,5 +22,6 @@
     "@vitejs/plugin-react": "^4.3.3",
     "typescript": "^5.6.3",
     "vite": "^5.4.10"
-  }
+  },
+  "license": "MIT"
 }

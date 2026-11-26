@@ -9,9 +9,10 @@ npm install
 npm run dev        # http://localhost:5173
 ```
 
-`public/data/` is generated from the raw downloads in `data/raw/` (not committed):
+`public/data/` is generated from the raw downloads in `data/raw/`. Neither is committed. To get the sources and build the data:
 
 ```
+bash scripts/fetch-sources.sh   # about 120 MB; CHECK=1 only tests the URLs
 npm run data
 ```
 
@@ -56,3 +57,16 @@ Raw sources:
 - `src/data.ts`: data model, reference parser, search, path finder
 - `src/store.ts`: notes and chains (localStorage)
 - `src/components/`: Reader, WordPanel, XrefPanel, Evidence, NetworkGraph, CanonArcs, Workbench
+
+## Publishing (free hosting on GitHub Pages)
+
+`.github/workflows/deploy.yml` runs on every push to `main`. It downloads the sources (cached between runs), runs `npm run data` and `npm run build`, and publishes `dist/` (about 63 MB) to GitHub Pages.
+
+One-time setup: in the repository on GitHub, open **Settings → Pages → Build and deployment → Source** and choose **GitHub Actions**. The site is then served at `https://<owner>.github.io/MediBible/`.
+
+## Licence
+
+- **Code:** MIT. See [LICENSE](LICENSE).
+- **Data:** each source keeps its own licence: KJV public domain, OpenBible.info and STEPBible CC BY 4.0, Tamil IRV CC BY-SA 4.0. [DATA-LICENSES.md](DATA-LICENSES.md) lists the sources, licence links and the changes MediBible makes. The app shows the same information under **About**.
+- **Bundled libraries:** `npm run build` writes their licences to `THIRD_PARTY_NOTICES.txt`.
+
