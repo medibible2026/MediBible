@@ -27,7 +27,8 @@ export interface XrefEntry {
 export interface Xrefs {
   attribution: string;
   offsets: Int32Array;
-  data: Int32Array; // triples: target, span, votes
+  data: Int32Array; // triples: target, span, votes (each verse's links sorted by votes)
+  linkId: Int32Array; // position in data -> link id
   inOffsets: Int32Array;
   inData: Int32Array; // triples: from, votes, link index
   links: Links | null;
@@ -64,13 +65,13 @@ export interface Evidence {
 
 export interface Links {
   attribution: string;
-  kinds: string;
-  evidence: Record<string, Evidence>;
+  kinds: string; // one letter per link id
+  evidence: Map<number, Evidence>; // by link id
   lemmas: Lemma[];
 }
 
 export const linkKind = (x: Xrefs, link: number): LinkKind | null => (x.links ? (x.links.kinds[link] as LinkKind) : null);
-export const linkEvidence = (x: Xrefs, link: number): Evidence | null => x.links?.evidence[link] ?? null;
+export const linkEvidence = (x: Xrefs, link: number): Evidence | null => x.links?.evidence.get(link) ?? null;
 
 export const OT_BOOKS = 39;
 
@@ -80,15 +81,18 @@ export const OT_BOOKS = 39;
 export type IWord = [string, string, string, string, string, number];
 export type LexEntry = [string, string, string, string]; // lemma, transliteration, gloss, part of speech
 
+/** Fetches a data file once. Large files that are decoded into other structures use this directly. */
+async function fetchJson<T>(name: string): Promise<T> {
+  const r = await fetch(`${import.meta.env.BASE_URL}data/${name}`);
+  if (!r.ok) throw new Error(`Could not load ${name} (${r.status}). Run "npm run data" first.`);
+  return r.json();
+}
+
+/** Fetches a data file and keeps it for later calls (on-demand files used as-is). */
 const jsonCache = new Map<string, Promise<unknown>>();
 function getJson<T>(name: string): Promise<T> {
   if (!jsonCache.has(name)) {
-    const p = fetch(`${import.meta.env.BASE_URL}data/${name}`)
-      .then((r) => {
-        if (!r.ok) throw new Error(`Could not load ${name} (${r.status}). Run "npm run data" first.`);
-        return r.json();
-      })
-      .catch((e) => { jsonCache.delete(name); throw e; });
+    const p = fetchJson<T>(name).catch((e) => { jsonCache.delete(name); throw e; });
     jsonCache.set(name, p);
   }
   return jsonCache.get(name) as Promise<T>;
@@ -114,26 +118,49 @@ export const loadConcordance = () => getJson<Record<string, number[]>>('concorda
 export const strongBase = (d: string) => d.replace(/[A-Za-z]$/, '');
 export const lexEntry = (lex: Record<string, LexEntry>, d: string): LexEntry | null => lex[d] ?? lex[strongBase(d)] ?? null;
 
+/** Text and cross-references: everything needed for the first screen. Link types load separately (loadLinks). */
 export async function loadData(): Promise<{ bible: Bible; xrefs: Xrefs }> {
-  const base = import.meta.env.BASE_URL;
-  const get = async (name: string) => {
-    const r = await fetch(`${base}data/${name}`);
-    if (!r.ok) throw new Error(`Could not load ${name} (${r.status}). Run "npm run data" first.`);
-    return r.json();
-  };
-  // Link evidence is optional: the explorer still works without the STEPBible build.
-  const [b, x, l] = await Promise.all([get('bible.json'), get('xrefs.json'), get('links.json').catch(() => null)]);
+  const [b, x] = await Promise.all([fetchJson<RawBible>('bible.json'), fetchJson<RawXrefs>('xrefs.json')]);
   const bible = buildBible(b);
-  const xrefs = buildXrefs(x, bible.texts.length);
-  if (l) {
-    xrefs.links = {
-      attribution: l.attribution,
-      kinds: l.kinds,
-      evidence: l.evidence,
-      lemmas: (l.lemmas as [string, string, string, string, number][]).map(([strong, lemma, translit, gloss, freq]) => ({ strong, lemma, translit, gloss, freq })),
-    };
+  return { bible, xrefs: buildXrefs(x, bible.texts.length) };
+}
+
+/** Link types and evidence (scripts/build-links.mjs). Optional: the explorer works without them. */
+export async function loadLinks(): Promise<Links> {
+  const l = await fetchJson<RawLinks>('links.json');
+  if (l.v !== 2) throw new Error('links.json is out of date; run "npm run data"');
+  return {
+    attribution: l.attribution,
+    kinds: l.kinds,
+    evidence: decodeEvidence(l.ev),
+    lemmas: l.lemmas.map(([strong, lemma, translit, gloss, freq]) => ({ strong, lemma, translit, gloss, freq })),
+  };
+}
+
+interface RawBible { translation: string; books: BookInfo[]; texts: string[] }
+interface RawXrefs { v: number; attribution: string; counts: number[]; dt: number[]; sp: number[]; vo: number[] }
+interface RawEvidence { ids: number[]; mask: number[]; p: string[]; wc: number[]; wi: number[]; lc: number[]; li: number[]; words: string[]; ec: number[]; ei: number[] }
+interface RawLinks { v: number; attribution: string; kinds: string; ev: RawEvidence; lemmas: [string, string, string, string, number][] }
+
+/** Columnar evidence (see scripts/lib/links-format.mjs) -> Map by link id. */
+function decodeEvidence(c: RawEvidence): Map<number, Evidence> {
+  const map = new Map<number, Evidence>();
+  let id = 0, p = 0, w = 0, wi = 0, l = 0, li = 0, e = 0, ei = 0;
+  for (let i = 0; i < c.ids.length; i++) {
+    id += c.ids[i];
+    const m = c.mask[i];
+    const ev: Evidence = {};
+    if (m & 1) ev.p = c.p[p++];
+    if (m & 2) { const n = c.wc[w++]; ev.w = c.wi.slice(wi, wi + n); wi += n; }
+    if (m & 4) {
+      const n = c.lc[l++];
+      ev.l = [];
+      for (let j = 0; j < n; j++, li += 3) ev.l.push([c.li[li], c.li[li + 1], c.li[li + 2]]);
+    }
+    if (m & 8) { const n = c.ec[e++]; ev.e = c.ei.slice(ei, ei + n).map((x) => c.words[x]); ei += n; }
+    map.set(id, ev);
   }
-  return { bible, xrefs };
+  return map;
 }
 
 function buildBible(raw: { translation: string; books: BookInfo[]; texts: string[] }): Bible {
@@ -161,9 +188,41 @@ function buildBible(raw: { translation: string; books: BookInfo[]; texts: string
   return { translation: raw.translation, books: raw.books, texts: raw.texts, chapterStart, vBook, vChap, vNum, osisIndex };
 }
 
-function buildXrefs(raw: { attribution: string; offsets: number[]; data: number[] }, n: number): Xrefs {
-  const offsets = Int32Array.from(raw.offsets);
-  const data = Int32Array.from(raw.data);
+/**
+ * Decodes xrefs.json v2 (see scripts/lib/xrefs-format.mjs). Links arrive in canonical order (source, then target);
+ * a link's position in that order is its id. Each verse's links are re-sorted by votes for display, keeping the id.
+ */
+function buildXrefs(raw: RawXrefs, n: number): Xrefs {
+  if (raw.v !== 2) throw new Error('xrefs.json is out of date; run "npm run data"');
+  const total = raw.dt.length;
+  const offsets = new Int32Array(n + 1);
+  const data = new Int32Array(total * 3);
+  const linkId = new Int32Array(total);
+  const order: number[] = [];
+  const targets = new Int32Array(total);
+  {
+    let k = 0;
+    for (let from = 0; from < n; from++) {
+      let prev = from;
+      for (let i = 0; i < raw.counts[from]; i++, k++) { prev += raw.dt[k]; targets[k] = prev; }
+    }
+  }
+  let k = 0;
+  for (let from = 0; from < n; from++) {
+    const start = k, end = k + raw.counts[from];
+    offsets[from] = start;
+    order.length = 0;
+    for (let i = start; i < end; i++) order.push(i);
+    order.sort((a, b) => raw.vo[b] - raw.vo[a] || targets[a] - targets[b]);
+    for (const id of order) {
+      data[k * 3] = targets[id];
+      data[k * 3 + 1] = raw.sp[id];
+      data[k * 3 + 2] = raw.vo[id];
+      linkId[k] = id;
+      k++;
+    }
+  }
+  offsets[n] = k;
   // Reverse index: every verse inside a linked passage points back to the source verse.
   const counts = new Int32Array(n + 1);
   for (let i = 0; i < data.length; i += 3) {
@@ -180,7 +239,7 @@ function buildXrefs(raw: { attribution: string; offsets: number[]; data: number[
         const p = fill[t]++;
         inData[p * 3] = from;
         inData[p * 3 + 1] = votes;
-        inData[p * 3 + 2] = k;
+        inData[p * 3 + 2] = linkId[k];
       }
     }
   }
@@ -193,13 +252,13 @@ function buildXrefs(raw: { attribution: string; offsets: number[]; data: number[
     rows.sort((x, y) => y[1] - x[1] || x[0] - y[0]);
     rows.forEach((r, i) => inData.set(r, (a + i) * 3));
   }
-  return { attribution: raw.attribution, offsets, data, inOffsets, inData, links: null };
+  return { attribution: raw.attribution, offsets, data, linkId, inOffsets, inData, links: null };
 }
 
 export function outgoing(x: Xrefs, id: number): XrefEntry[] {
   const res: XrefEntry[] = [];
   for (let k = x.offsets[id]; k < x.offsets[id + 1]; k++) {
-    res.push({ target: x.data[k * 3], span: x.data[k * 3 + 1], votes: x.data[k * 3 + 2], link: k });
+    res.push({ target: x.data[k * 3], span: x.data[k * 3 + 1], votes: x.data[k * 3 + 2], link: x.linkId[k] });
   }
   return res;
 }

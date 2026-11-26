@@ -52,6 +52,7 @@ Raw sources:
 - `scripts/build-interlinear.mjs`: per-book word data, lexicon, definitions and concordance (→ `public/data/interlinear/`, `lexicon.json`, `defs-*.json`, `concordance.json`)
 - `scripts/build-translations.mjs`: eBible.org verse-per-line translations aligned to the KJV verse index (→ `public/data/tam2017.json`)
 - `src/text.tsx`: translation setting shared across the app (`Passage`, `TextModeSelect`)
+- `scripts/lib/xrefs-format.mjs`, `scripts/lib/links-format.mjs`: compact column formats for cross-references and link evidence (decoded in `src/data.ts`). A link's id is its position in canonical order (by source, then target verse).
 - `scripts/lib/stepbible.mjs`: shared STEPBible readers and KJV versification mapping
 - `src/morph.ts`: Hebrew (OSHB) and Greek (Robinson) grammar codes to plain English
 - `src/data.ts`: data model, reference parser, search, path finder

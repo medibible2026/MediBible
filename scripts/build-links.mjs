@@ -14,10 +14,12 @@
 import { readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { OT_BOOKS, baseOf, forEachWord, loadBibleIndex, loadLexicon, outDir, wordTags } from './lib/stepbible.mjs';
+import { decodeXrefs } from './lib/xrefs-format.mjs';
+import { encodeEvidence } from './lib/links-format.mjs';
 
 const index = loadBibleIndex();
 const { bible, N, chapterStart, isOT } = index;
-const xrefs = JSON.parse(readFileSync(join(outDir, 'xrefs.json'), 'utf8'));
+const xrefs = decodeXrefs(JSON.parse(readFileSync(join(outDir, 'xrefs.json'), 'utf8')));
 
 // ---------- Lexicons ----------
 const { lexicon, lex, isFunctionWord } = loadLexicon();
@@ -131,7 +133,7 @@ function sharedRun(a, b) {
 
 // ---------- Classify ----------
 const kinds = [];
-const evidence = {}; // link index -> evidence
+const evidence = new Map(); // link id -> evidence
 const usedLemmas = new Map(); // lemma idx -> output idx
 const outLemma = (l) => {
   let o = usedLemmas.get(l);
@@ -191,7 +193,7 @@ for (let from = 0; from < N; from++) {
       if (kind === 'T' && shared.length) kind = 'E';
     }
     kinds.push(kind);
-    if (Object.keys(ev).length) evidence[k] = ev;
+    if (Object.keys(ev).length) evidence.set(k, ev);
     counts[kind] = (counts[kind] || 0) + 1;
   }
 }
@@ -204,8 +206,9 @@ for (const [l, o] of usedLemmas) {
 }
 
 writeFileSync(join(outDir, 'links.json'), JSON.stringify({
+  v: 2,
   attribution: 'Hebrew/Greek tagging: STEPBible.org TAHOT, TAGNT, TBESH, TBESG (CC BY 4.0)',
-  kinds: kinds.join(''), evidence, lemmas,
+  kinds: kinds.join(''), ev: encodeEvidence(evidence), lemmas,
 }));
 console.log(`links=${kinds.length} unmappedWords=${unmapped} lexicon=${lexicon.size} lemmas=${lemmaKeys.length} greekToHeb=${greekToHeb.size}`);
 console.log(counts);

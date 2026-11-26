@@ -5,6 +5,7 @@
 import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { encodeXrefs } from './lib/xrefs-format.mjs';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 const raw = join(root, 'data', 'raw');
@@ -65,17 +66,10 @@ for (const line of lines) {
   byFrom[f].push([a, z - a, Number(votesStr)]);
 }
 
-// Flat layout: offsets[i]..offsets[i+1] indexes triples in data (target, span, votes).
-const offsets = [0];
-const data = [];
-for (const list of byFrom) {
-  list.sort((x, y) => y[2] - x[2] || x[0] - y[0]);
-  for (const t of list) data.push(...t);
-  offsets.push(data.length / 3);
-}
-
 writeFileSync(join(out, 'bible.json'), JSON.stringify({
   translation: 'KJV', source: 'King James Version (1769), public domain', books, texts,
 }));
-writeFileSync(join(out, 'xrefs.json'), JSON.stringify({ attribution, offsets, data }));
-console.log(`verses=${texts.length} xrefs=${data.length / 3} skipped=${skipped}`);
+// Compact v2 format (see scripts/lib/xrefs-format.mjs): canonical order by source, then target.
+const xrefs = encodeXrefs(byFrom, attribution);
+writeFileSync(join(out, 'xrefs.json'), JSON.stringify(xrefs));
+console.log(`verses=${texts.length} xrefs=${xrefs.dt.length} skipped=${skipped}`);

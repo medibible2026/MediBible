@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
-  ALT_TRANSLATION, Bible, DEFAULT_FILTERS, Filters, Translation, Xrefs, fromOsis, hasTamil, lexEntry, loadConcordance, loadData, loadLexicon,
+  ALT_TRANSLATION, Bible, DEFAULT_FILTERS, Filters, Translation, Xrefs, fromOsis, hasTamil, lexEntry, loadConcordance, loadData, loadLexicon, loadLinks,
   loadTranslation, osisOf, parseRef, searchText, strongBase,
 } from './data';
 import { TextContext, TextMode } from './text';
@@ -14,7 +14,18 @@ export default function App() {
   const [data, setData] = useState<{ bible: Bible; xrefs: Xrefs } | null>(null);
   const [error, setError] = useState<string | null>(null);
   useEffect(() => {
-    loadData().then(setData).catch((e) => setError(e instanceof Error ? e.message : String(e)));
+    let live = true;
+    loadData()
+      .then((d) => {
+        if (!live) return;
+        setData(d);
+        // Link types are not needed to show the first screen: fetch them afterwards.
+        loadLinks()
+          .then((links) => live && setData((cur) => (cur ? { ...cur, xrefs: { ...cur.xrefs, links } } : cur)))
+          .catch((e) => console.warn('Link types unavailable:', e));
+      })
+      .catch((e) => live && setError(e instanceof Error ? e.message : String(e)));
+    return () => { live = false; };
   }, []);
   if (error) return <div className="splash"><h1>MediBible</h1><p className="warn">{error}</p></div>;
   if (!data) return <div className="splash"><h1>MediBible</h1><p className="muted">Loading 31,102 verses and 344,794 cross-references…</p></div>;
